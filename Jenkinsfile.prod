@@ -1,0 +1,202 @@
+pipeline {
+    agent any
+
+    // Static environment variables
+    environment {
+        AWS_ACCOUNT_ID     = '833227482620'
+        AWS_DEFAULT_REGION = 'us-east-2'
+        PROJECT_NAME       = 'prod-uw-api'
+        ECR_REPO           = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${PROJECT_NAME}"
+
+        MEGALINTER_IMAGE               = 'oxsecurity/megalinter-cupcake:v8.8.0'
+        DISABLE_MEGALINTER_ERRORS      = 'true'       // Set to 'false' to fail pipeline when Megalinter errors encountered
+        VALIDATE_ALL_CODEBASE          = 'false'       // Set to 'true' to validate megalinter in all files (instead of only changed files)
+        ENABLE_QUALITY_GATE            = 'false'      // Set to 'false' to disable quality gate 
+    }
+
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '5'))
+        timestamps()
+        disableConcurrentBuilds()
+        skipDefaultCheckout(true)
+    }
+
+    stages {
+        stage('Checkout Source') {
+            steps {
+                checkout([
+                    $class: 'GitSCM',
+                    branches: scm.branches,
+                    userRemoteConfigs:scm.userRemoteConfigs,
+                    extensions: [
+                        [$class: 'CloneOption', 
+                        depth: 0,           // Full clone (critical for SonarQube)
+                        noTags: false, 
+                        reference: '', 
+                        shallow: false]     // disable shallow clone
+                    ]
+                ])
+            } 
+        }
+
+        stage('Set Commit and Tag') {
+            steps {
+                script {
+                    // Compute the Git commit hash and set IMAGE_TAG dynamically
+                    env.GIT_COMMIT = sh(script: "git rev-parse HEAD | cut -c1-7", returnStdout: true).trim()
+                    env.SHORT_COMMIT = sh( script: "git rev-parse HEAD | cut -c1-7", returnStdout: true).trim()
+                    env.IMAGE_TAG  = "${BUILD_NUMBER}-${env.SHORT_COMMIT}"
+                    env.UW_API_IMAGE = "${ECR_REPO}:${env.IMAGE_TAG}" 
+                    echo "GIT_COMMIT: ${env.GIT_COMMIT}"
+                    echo "IMAGE_TAG: ${env.IMAGE_TAG}"
+                }
+            }
+        }
+
+        stage('concurrent execution of SonarScanner and MegaLinter') {
+            parallel {
+                stage('Run MegaLinter') {
+                    agent {
+                        label 'megalinter || megalinter-node'
+                    }
+
+                    steps {
+                        // MegaLinter needs full Git history to properly detect changed files
+                        withCredentials([string(credentialsId: 'github-token1', variable: 'GITHUB_TOKEN')]) {
+
+                            sh '''
+                                docker run --rm \
+                                -v "${WORKSPACE}:/tmp/lint" \
+                                -v "megalinter-cache:/root/.cache" \
+                                -v /root/.ssh:/root/.ssh:ro \
+                                -e DEFAULT_WORKSPACE=/tmp/lint \
+                                -e MEGALINTER_CONFIG=.mega-linter.yml \
+                                -e RUN_LOCAL=true \
+                                -e APPLY_FIXES=none \
+                                -e DISABLE_ERRORS=${DISABLE_MEGALINTER_ERRORS} \
+                                -e LOG_LEVEL=INFO \
+                                -e PRINT_ALL_FILES=false \
+                                -e VALIDATE_ALL_CODEBASE=${VALIDATE_ALL_CODEBASE} \
+                                -e REPOSITORY_GITLEAKS_PR_COMMITS_SCAN=true \
+                                -e GIT_AUTHORIZATION_BEARER=${GITHUB_TOKEN} \
+                                $MEGALINTER_IMAGE
+                            '''
+                        }
+                    }
+
+                    post {
+                        always {
+                            archiveArtifacts(allowEmptyArchive: true,
+                            artifacts: 'mega-linter.log,megalinter-reports/**/*',
+                            defaultExcludes: false,
+                            followSymlinks: false)
+                        }
+                    }
+                }
+
+                stage('SonarScanner Analysis') {
+                    steps {                  
+                        script {
+                            def sonarScanner = tool name: 'SonarQube Scanner'
+                            def sonarUserHome = "/var/jenkins_home/.sonar-cache/${PROJECT_NAME}"
+
+                            withSonarQubeEnv(installationName: 'SonarQube Scanner') {
+                                sh """  
+                                ${sonarScanner}/bin/sonar-scanner \
+                                    -D sonar.userHome=${sonarUserHome} \
+                                    -D sonar.projectKey=uw-backend_master \
+                                    -D sonar.projectName=uw-backend_master \
+                                    -D sonar.qualitygate.wait=false \
+                                    -D sonar.verbose=true                              
+                                """
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('SonarQube Quality Gate') {
+            steps {
+                timeout(time: 5, unit: 'MINUTES') {
+                    script {
+                        def enableQualityGate = ENABLE_QUALITY_GATE.toBoolean()
+
+                        def qg = waitForQualityGate(
+                            abortPipeline: false
+                        )
+
+                        // validation for quality gate status 
+                        if (qg.status == 'OK') {
+                            echo "✅ Quality Gate PASSED"
+                        } 
+                        
+                        else {
+                            echo "❌ Quality Gate FAILED with status: ${qg.status}"
+                            
+                            if (enableQualityGate) {
+                                    error "Pipeline aborted due to quality gate failure"
+                                }
+
+                            else {
+                                echo "⚠️ Quality Gate is DISABLED. Continuing pipeline to next stage..."
+                            }
+                        }
+
+                    }
+                }
+            }
+        }
+
+        stage('Authenticate to ECR') {    
+            steps {
+                script {
+                    echo "Logging into AWS ECR..."
+                    sh "aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}"
+                    echo "ECR login successful."
+                }
+            }
+        }
+
+        stage('Build & Push Docker Image to ECR') {
+            steps {
+                script {
+                    echo "Building Docker image: ${ECR_REPO}:${env.IMAGE_TAG}"
+                    sh "aws s3 cp s3://prod-env-app-variables/${PROJECT_NAME}/.env .env"
+                    sh "docker build -t ${ECR_REPO}:${env.IMAGE_TAG} ."
+                    sh "docker push ${ECR_REPO}:${env.IMAGE_TAG}"
+                }
+            }
+        }
+
+        stage('Run Remote Deployment Script') {
+            steps {
+                script {
+                    sshagent(credentials: ['prod-purenroll-web-ec2-01-ssh']) {
+                        sh """
+                            ssh -o StrictHostKeyChecking=no ubuntu@3.137.21.213 "UW_API_IMAGE=${env.UW_API_IMAGE} bash /home/ubuntu/deployment2/prod-uw-api/scripts/start_container.sh"
+                        """
+                    }
+                }
+            }
+        }
+
+    }
+
+    post {
+        success {
+            echo "Pipeline executed successfully, image updated to ${env.IMAGE_TAG}"
+        }
+        
+        failure {
+            echo "Deployment failed. Check logs for details."
+        }
+        
+        always {
+            echo "Cleaning up workspace..."
+            cleanWs()
+        }
+    }
+}
+
+

@@ -1,0 +1,1073 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>UW Backend — Database Schema</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #22263a;
+      --border: #2e3248;
+      --accent: #6c63ff;
+      --accent2: #00c9a7;
+      --accent3: #f7b731;
+      --accent4: #ff6b6b;
+      --text: #e2e8f0;
+      --muted: #8892a4;
+      --pk: #ffd700;
+      --fk: #7ec8e3;
+      --req: #ff6b6b;
+      --opt: #8892a4;
+      --bool: #00c9a7;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    header {
+      background: linear-gradient(135deg, #1a1d27 0%, #22263a 100%);
+      border-bottom: 2px solid var(--accent);
+      padding: 32px 48px;
+    }
+    header h1 { font-size: 28px; font-weight: 700; color: #fff; letter-spacing: -0.5px; }
+    header p { color: var(--muted); margin-top: 6px; font-size: 13px; }
+    header .meta { display: flex; gap: 24px; margin-top: 16px; flex-wrap: wrap; }
+    .badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 20px; padding: 4px 12px; font-size: 12px; color: var(--muted);
+    }
+    .badge span { color: var(--text); font-weight: 600; }
+
+    nav {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 48px;
+      display: flex; gap: 0; flex-wrap: wrap;
+      position: sticky; top: 0; z-index: 100;
+    }
+    nav a {
+      color: var(--muted); text-decoration: none;
+      padding: 14px 16px; font-size: 13px; font-weight: 500;
+      border-bottom: 2px solid transparent;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    nav a:hover { color: var(--text); border-bottom-color: var(--accent); }
+
+    main { padding: 40px 48px; max-width: 1400px; }
+
+    h2 {
+      font-size: 20px; font-weight: 700;
+      color: #fff; margin-bottom: 20px; margin-top: 48px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 10px;
+    }
+    h2:first-of-type { margin-top: 0; }
+    .section-label {
+      font-size: 11px; font-weight: 700; letter-spacing: 1.5px;
+      text-transform: uppercase; padding: 3px 8px;
+      border-radius: 4px; background: var(--accent); color: #fff;
+    }
+    .section-label.green { background: var(--accent2); }
+    .section-label.yellow { background: var(--accent3); color: #1a1d27; }
+    .section-label.red { background: var(--accent4); }
+
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(560px, 1fr)); gap: 20px; }
+    .grid.wide { grid-template-columns: 1fr; }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .card-header {
+      padding: 14px 18px;
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .card-header .table-name {
+      font-weight: 700; font-size: 15px; color: #fff;
+      font-family: 'Cascadia Code', 'Fira Code', monospace;
+    }
+    .card-header .model-name {
+      font-size: 11px; color: var(--muted); margin-top: 2px;
+      font-family: 'Cascadia Code', 'Fira Code', monospace;
+    }
+    .card-header .tag {
+      font-size: 11px; font-weight: 600; padding: 2px 8px;
+      border-radius: 4px; background: rgba(108,99,255,0.2);
+      color: var(--accent); border: 1px solid rgba(108,99,255,0.3);
+    }
+
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      text-align: left; font-size: 11px; font-weight: 600;
+      letter-spacing: 0.8px; text-transform: uppercase;
+      color: var(--muted); padding: 10px 18px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255,255,255,0.02);
+    }
+    td {
+      padding: 9px 18px; border-bottom: 1px solid rgba(46,50,72,0.5);
+      font-size: 13px; vertical-align: top;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(255,255,255,0.02); }
+
+    .col-name {
+      font-family: 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 12.5px; color: var(--text); font-weight: 500;
+    }
+    .col-type {
+      font-family: 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 12px; color: #a78bfa;
+    }
+    .tag-pk {
+      display: inline-block; font-size: 10px; font-weight: 700;
+      padding: 1px 5px; border-radius: 3px;
+      background: rgba(255,215,0,0.15); color: var(--pk);
+      border: 1px solid rgba(255,215,0,0.3); margin-left: 6px;
+    }
+    .tag-fk {
+      display: inline-block; font-size: 10px; font-weight: 700;
+      padding: 1px 5px; border-radius: 3px;
+      background: rgba(126,200,227,0.15); color: var(--fk);
+      border: 1px solid rgba(126,200,227,0.3); margin-left: 6px;
+    }
+    .tag-uq {
+      display: inline-block; font-size: 10px; font-weight: 700;
+      padding: 1px 5px; border-radius: 3px;
+      background: rgba(247,183,49,0.15); color: var(--accent3);
+      border: 1px solid rgba(247,183,49,0.3); margin-left: 6px;
+    }
+    .req { color: var(--req); font-size: 11px; }
+    .opt { color: var(--opt); font-size: 11px; }
+    .note { color: var(--muted); font-size: 12px; }
+    .default { color: var(--accent2); font-size: 11px; font-family: monospace; }
+
+    .erd-section { margin-top: 48px; }
+    .erd-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 24px;
+    }
+    .erd-box pre {
+      font-family: 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 12.5px;
+      color: var(--text);
+      line-height: 1.8;
+      overflow-x: auto;
+      white-space: pre;
+    }
+    .erd-box .c-green { color: #00c9a7; }
+    .erd-box .c-yellow { color: #f7b731; }
+    .erd-box .c-blue { color: #7ec8e3; }
+    .erd-box .c-purple { color: #a78bfa; }
+    .erd-box .c-red { color: #ff6b6b; }
+    .erd-box .c-gray { color: #8892a4; }
+
+    .enum-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+    .enum-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; overflow: hidden;
+    }
+    .enum-card-header {
+      padding: 10px 14px; background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+      font-family: 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 13px; font-weight: 700; color: #a78bfa;
+    }
+    .enum-card ul { list-style: none; padding: 10px 0; }
+    .enum-card ul li {
+      padding: 5px 14px; font-family: monospace;
+      font-size: 12.5px; color: var(--text);
+      border-bottom: 1px solid rgba(46,50,72,0.4);
+    }
+    .enum-card ul li:last-child { border-bottom: none; }
+    .enum-card ul li::before { content: '• '; color: var(--accent2); }
+
+    .rel-table { width: 100%; border-collapse: collapse; }
+    .rel-table th {
+      text-align: left; font-size: 11px; font-weight: 600;
+      letter-spacing: 0.8px; text-transform: uppercase;
+      color: var(--muted); padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .rel-table td {
+      padding: 9px 16px; border-bottom: 1px solid rgba(46,50,72,0.5);
+      font-size: 12.5px;
+    }
+    .rel-table tr:last-child td { border-bottom: none; }
+    .arrow { color: var(--accent); font-weight: 700; }
+    .rel-type { color: var(--accent3); font-size: 11px; font-weight: 600; }
+    .on-delete { color: var(--accent4); font-size: 11px; }
+
+    footer {
+      margin: 60px 48px 40px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    /* ── Tooltip ── */
+    .tooltip-row { position: relative; cursor: default; }
+    .tooltip-row td { position: relative; }
+    .tooltip-popup {
+      display: none;
+      position: fixed;
+      z-index: 9999;
+      background: #12141f;
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 12.5px;
+      color: var(--text);
+      max-width: 320px;
+      line-height: 1.6;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+      pointer-events: none;
+    }
+    .tooltip-popup.visible { display: block; }
+    .tooltip-popup .tp-col { font-family: monospace; color: var(--accent2); font-weight: 700; margin-bottom: 4px; }
+    .tooltip-popup .tp-type { font-family: monospace; color: #a78bfa; font-size: 11.5px; margin-bottom: 6px; }
+    .tooltip-popup .tp-desc { color: var(--muted); }
+    .tooltip-popup .tp-default { margin-top: 6px; font-size: 11px; color: var(--accent3); }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>UW Backend — Database Schema</h1>
+  <p>PostgreSQL · Prisma ORM · NestJS</p>
+  <div class="meta">
+    <div class="badge">Database <span>PostgreSQL</span></div>
+    <div class="badge">ORM <span>Prisma</span></div>
+    <div class="badge">Tables <span>25</span></div>
+    <div class="badge">Enums <span>7</span></div>
+    <div class="badge">Last Migration <span>2026-06-01</span></div>
+  </div>
+</header>
+
+<nav>
+  <a href="#rbac">RBAC</a>
+  <a href="#policies">Policies</a>
+  <a href="#underwriting">Underwriting</a>
+  <a href="#enrollment">L713 Enrollment</a>
+  <a href="#members">Members</a>
+  <a href="#agents">Agents &amp; Groups</a>
+  <a href="#plans">Plans</a>
+  <a href="#supporting">Supporting Tables</a>
+  <a href="#jobs">Jobs</a>
+  <a href="#enums">Enums</a>
+  <a href="#relations">Relationships</a>
+</nav>
+
+<main>
+
+  <!-- ═══════════════════════════════════════════════════════ RBAC -->
+  <h2 id="rbac"><span class="section-label">RBAC</span> Access Control</h2>
+  <div class="grid">
+
+    <div class="card">
+      <div class="card-header">
+        <div><div class="table-name">users</div><div class="model-name">model User — Admin Users</div></div>
+        <div class="tag">Admin Users</div>
+      </div>
+      <table>
+        <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr class="tooltip-row" data-col="user_id" data-type="SERIAL INT" data-desc="Primary key, auto-incremented integer." data-default="autoincrement"><td><span class="col-name">user_id</span><span class="tag-pk">PK</span></td><td><span class="col-type">SERIAL INT</span></td><td><span class="default">autoincrement</span></td></tr>
+          <tr class="tooltip-row" data-col="sso_user_id" data-type="INT" data-desc="Unique identifier from the external SSO provider. Used to link admin users to their SSO identity."><td><span class="col-name">sso_user_id</span><span class="tag-uq">UQ</span></td><td><span class="col-type">INT</span></td><td><span class="req">Required</span></td></tr>
+          <tr class="tooltip-row" data-col="email" data-type="VARCHAR(255)" data-desc="Admin user's email address. Must be unique across all admin users."><td><span class="col-name">email</span><span class="tag-uq">UQ</span></td><td><span class="col-type">VARCHAR(255)</span></td><td><span class="req">Required</span></td></tr>
+          <tr class="tooltip-row" data-col="first_name" data-type="VARCHAR(100)" data-desc="Admin user's first name."><td><span class="col-name">first_name</span></td><td><span class="col-type">VARCHAR(100)</span></td><td><span class="req">Required</span></td></tr>
+          <tr class="tooltip-row" data-col="last_name" data-type="VARCHAR(100)" data-desc="Admin user's last name."><td><span class="col-name">last_name</span></td><td><span class="col-type">VARCHAR(100)</span></td><td><span class="req">Required</span></td></tr>
+          <tr class="tooltip-row" data-col="phone" data-type="VARCHAR(50)" data-desc="Admin user's contact phone number. Optional."><td><span class="col-name">phone</span></td><td><span class="col-type">VARCHAR(50)</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr class="tooltip-row" data-col="is_active" data-type="BOOLEAN" data-desc="Whether this admin account is active. Inactive accounts cannot perform actions." data-default="true"><td><span class="col-name">is_active</span></td><td><span class="col-type">BOOLEAN</span></td><td><span class="default">true</span></td></tr>
+          <tr class="tooltip-row" data-col="last_logged_in_at" data-type="TIMESTAMP" data-desc="Timestamp of the admin user's most recent login. Updated on each successful authentication."><td><span class="col-name">last_logged_in_at</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr class="tooltip-row" data-col="ip_address" data-type="VARCHAR(45)" data-desc="IP address recorded at last login. Supports IPv4 and IPv6 (max 45 chars)."><td><span class="col-name">ip_address</span></td><td><span class="col-type">VARCHAR(45)</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr class="tooltip-row" data-col="token" data-type="TEXT" data-desc="Auth or refresh token for the admin user. Stored as plain text — ensure it is a hashed or opaque token, not a raw secret."><td><span class="col-name">token</span></td><td><span class="col-type">TEXT</span></td><td><span class="opt">Optional</span> <span class="note">Auth/refresh token</span></td></tr>
+          <tr class="tooltip-row" data-col="created_at" data-type="TIMESTAMP" data-desc="Timestamp when this user record was created." data-default="now()"><td><span class="col-name">created_at</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="default">now()</span></td></tr>
+          <tr class="tooltip-row" data-col="updated_at" data-type="TIMESTAMP" data-desc="Timestamp automatically updated whenever the user record is modified." data-default="auto-update"><td><span class="col-name">updated_at</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="default">auto-update</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div><div class="table-name">roles</div><div class="model-name">model Role</div></div>
+      </div>
+      <table>
+        <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><span class="col-name">role_id</span><span class="tag-pk">PK</span></td><td><span class="col-type">SERIAL INT</span></td><td><span class="default">autoincrement</span></td></tr>
+          <tr><td><span class="col-name">role_name</span></td><td><span class="col-type">VARCHAR(100)</span></td><td><span class="req">Required</span></td></tr>
+          <tr><td><span class="col-name">description</span></td><td><span class="col-type">TEXT</span></td><td><span class="opt">Optional</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div><div class="table-name">permissions</div><div class="model-name">model Permission</div></div>
+      </div>
+      <table>
+        <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><span class="col-name">permission_id</span><span class="tag-pk">PK</span></td><td><span class="col-type">SERIAL INT</span></td><td><span class="default">autoincrement</span></td></tr>
+          <tr><td><span class="col-name">resource</span></td><td><span class="col-type">VARCHAR(150)</span></td><td><span class="req">Required</span> <span class="note">e.g. "policy"</span></td></tr>
+          <tr><td><span class="col-name">action</span></td><td><span class="col-type">VARCHAR(100)</span></td><td><span class="req">Required</span> <span class="note">e.g. "approve"</span></td></tr>
+          <tr><td><span class="col-name">name</span><span class="tag-uq">UQ</span></td><td><span class="col-type">VARCHAR(200)</span></td><td><span class="note">e.g. "policy:approve"</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div><div class="table-name">user_roles</div><div class="model-name">model UserRole — Junction</div></div>
+      </div>
+      <table>
+        <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><span class="col-name">user_id</span><span class="tag-pk">PK</span><span class="tag-fk">FK</span></td><td><span class="col-type">INT</span></td><td><span class="note">→ users.user_id</span></td></tr>
+          <tr><td><span class="col-name">role_id</span><span class="tag-pk">PK</span><span class="tag-fk">FK</span></td><td><span class="col-type">INT</span></td><td><span class="note">→ roles.role_id</span></td></tr>
+          <tr><td><span class="col-name">assigned_at</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="default">now()</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div><div class="table-name">role_permissions</div><div class="model-name">model RolePermission — Junction</div></div>
+      </div>
+      <table>
+        <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><span class="col-name">role_id</span><span class="tag-pk">PK</span><span class="tag-fk">FK</span></td><td><span class="col-type">INT</span></td><td><span class="note">→ roles.role_id</span></td></tr>
+          <tr><td><span class="col-name">permission_id</span><span class="tag-pk">PK</span><span class="tag-fk">FK</span></td><td><span class="col-type">INT</span></td><td><span class="note">→ permissions.permission_id</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ POLICIES -->
+  <h2 id="policies"><span class="section-label yellow">Policies</span> Insurance Policies</h2>
+  <div class="grid">
+    <div class="card">
+      <div class="card-header">
+        <div><div class="table-name">policies</div><div class="model-name">model Policy</div></div>
+        <div class="tag">Legacy UW Module</div>
+      </div>
+      <table>
+        <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><span class="col-name">policy_id</span><span class="tag-pk">PK</span></td><td><span class="col-type">SERIAL INT</span></td><td><span class="default">autoincrement</span></td></tr>
+          <tr><td><span class="col-name">policy_code</span><span class="tag-uq">UQ</span></td><td><span class="col-type">VARCHAR(100)</span></td><td><span class="req">Required</span></td></tr>
+          <tr><td><span class="col-name">policy_name</span></td><td><span class="col-type">VARCHAR(255)</span></td><td><span class="req">Required</span></td></tr>
+          <tr><td><span class="col-name">plan_type</span></td><td><span class="col-type">VARCHAR(100)</span></td><td><span class="req">Required</span></td></tr>
+          <tr><td><span class="col-name">coverage_amount</span></td><td><span class="col-type">DECIMAL(15,2)</span></td><td><span class="default">0</span></td></tr>
+          <tr><td><span class="col-name">premium</span></td><td><span class="col-type">DECIMAL(10,2)</span></td><td><span class="default">0</span></td></tr>
+          <tr><td><span class="col-name">is_active</span></td><td><span class="col-type">BOOLEAN</span></td><td><span class="default">true</span></td></tr>
+          <tr><td><span class="col-name">created_at</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="default">now()</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ UNDERWRITING -->
+  <h2 id="underwriting"><span class="section-label red">Underwriting</span> Legacy UW Module</h2>
+  <div class="grid">
+
+    <div class="card">
+      <div class="card-header">
+        <div><div class="table-name">pending_underwriting_status</div><div class="model-name">model PendingUnderwritingStatus</div></div>
+      </div>
+      <table>
+        <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><span class="col-name">id</span><span class="tag-pk">PK</span></td><td><span class="col-type">SERIAL INT</span></td><td></td></tr>
+          <tr><td><span class="col-name">policy_id</span><span class="tag-fk">FK</span></td><td><span class="col-type">INT</span></td><td><span class="note">→ policies</span></td></tr>
+          <tr><td><span class="col-name">user_id</span></td><td><span class="col-type">INT</span></td><td><span class="req">Required</span></td></tr>
+          <tr><td><span class="col-name">status</span></td><td><span class="col-type">underwriting_status</span></td><td><span class="default">pending</span></td></tr>
+          <tr><td><span class="col-name">application_date</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="default">now()</span></td></tr>
+          <tr><td><span class="col-name">underwriter_assigned</span></td><td><span class="col-type">INT</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">approval_date</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">rejection_reason</span></td><td><span class="col-type">TEXT</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">terminated_reason</span></td><td><span class="col-type">TEXT</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">terminated_date</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">activation_date</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">created_at / updated_at</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="default">auto</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div><div class="table-name">underwriting_questions</div><div class="model-name">model UnderwritingQuestion</div></div>
+      </div>
+      <table>
+        <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><span class="col-name">question_id</span><span class="tag-pk">PK</span></td><td><span class="col-type">SERIAL INT</span></td><td></td></tr>
+          <tr><td><span class="col-name">pending_underwriting_id</span><span class="tag-fk">FK</span></td><td><span class="col-type">INT</span></td><td><span class="note">→ pending_underwriting_status</span></td></tr>
+          <tr><td><span class="col-name">policy_id</span><span class="tag-fk">FK</span></td><td><span class="col-type">INT</span></td><td><span class="note">→ policies</span></td></tr>
+          <tr><td><span class="col-name">question_text</span></td><td><span class="col-type">TEXT</span></td><td><span class="req">Required</span></td></tr>
+          <tr><td><span class="col-name">asked_by_user_id</span></td><td><span class="col-type">INT</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">email_log_id</span><span class="tag-fk">FK</span></td><td><span class="col-type">INT</span></td><td><span class="note">→ email_send_log</span></td></tr>
+          <tr><td><span class="col-name">status</span></td><td><span class="col-type">question_status</span></td><td><span class="default">pending</span></td></tr>
+          <tr><td><span class="col-name">answer_text</span></td><td><span class="col-type">TEXT</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">answered_at</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">created_at</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="default">now()</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div><div class="table-name">enrollment_signature</div><div class="model-name">model EnrollmentSignature</div></div>
+      </div>
+      <table>
+        <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><span class="col-name">signature_id</span><span class="tag-pk">PK</span></td><td><span class="col-type">SERIAL INT</span></td><td></td></tr>
+          <tr><td><span class="col-name">pending_underwriting_id</span><span class="tag-fk">FK</span></td><td><span class="col-type">INT</span></td><td><span class="note">→ pending_underwriting_status</span></td></tr>
+          <tr><td><span class="col-name">policy_id</span><span class="tag-fk">FK</span></td><td><span class="col-type">INT</span></td><td><span class="note">→ policies</span></td></tr>
+          <tr><td><span class="col-name">signature_request_sent_at</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">signed_at</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">signature_data</span></td><td><span class="col-type">TEXT</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">ip_address</span></td><td><span class="col-type">VARCHAR</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">user_agent</span></td><td><span class="col-type">TEXT</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">status</span></td><td><span class="col-type">signature_status</span></td><td><span class="default">requested</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div><div class="table-name">enrollment_status_change_log</div><div class="model-name">model EnrollmentStatusChangeLog</div></div>
+      </div>
+      <table>
+        <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><span class="col-name">change_log_id</span><span class="tag-pk">PK</span></td><td><span class="col-type">SERIAL INT</span></td><td></td></tr>
+          <tr><td><span class="col-name">pending_underwriting_id</span><span class="tag-fk">FK</span></td><td><span class="col-type">INT</span></td><td><span class="note">→ pending_underwriting_status</span></td></tr>
+          <tr><td><span class="col-name">policy_id</span><span class="tag-fk">FK</span></td><td><span class="col-type">INT</span></td><td><span class="note">→ policies</span></td></tr>
+          <tr><td><span class="col-name">old_status</span></td><td><span class="col-type">VARCHAR(100)</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">new_status</span></td><td><span class="col-type">VARCHAR(100)</span></td><td><span class="req">Required</span></td></tr>
+          <tr><td><span class="col-name">changed_by</span></td><td><span class="col-type">INT</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">reason</span></td><td><span class="col-type">TEXT</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">metadata</span></td><td><span class="col-type">JSON</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">created_at</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="default">now()</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div><div class="table-name">email_send_log</div><div class="model-name">model EmailSendLog — Legacy</div></div>
+      </div>
+      <table>
+        <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><span class="col-name">email_log_id</span><span class="tag-pk">PK</span></td><td><span class="col-type">SERIAL INT</span></td><td></td></tr>
+          <tr><td><span class="col-name">pending_underwriting_id</span><span class="tag-fk">FK</span></td><td><span class="col-type">INT</span></td><td><span class="note">→ pending_underwriting_status</span></td></tr>
+          <tr><td><span class="col-name">policy_id</span><span class="tag-fk">FK</span></td><td><span class="col-type">INT</span></td><td><span class="note">→ policies</span></td></tr>
+          <tr><td><span class="col-name">recipient_email</span></td><td><span class="col-type">VARCHAR(255)</span></td><td><span class="req">Required</span></td></tr>
+          <tr><td><span class="col-name">cc / bcc</span></td><td><span class="col-type">TEXT</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">subject</span></td><td><span class="col-type">VARCHAR(500)</span></td><td><span class="req">Required</span></td></tr>
+          <tr><td><span class="col-name">body</span></td><td><span class="col-type">TEXT</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">email_type</span></td><td><span class="col-type">VARCHAR(100)</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">sent_by_user_id</span></td><td><span class="col-type">INT</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">sent_at</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="default">now()</span></td></tr>
+          <tr><td><span class="col-name">status</span></td><td><span class="col-type">email_status</span></td><td><span class="default">queued</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ MEMBERS -->
+  <h2 id="members"><span class="section-label green">Members</span> Policy Holders</h2>
+  <div class="grid">
+    <div class="card">
+      <div class="card-header">
+        <div><div class="table-name">members</div><div class="model-name">model Member — Policy Holders, no login</div></div>
+        <div class="tag">New</div>
+      </div>
+      <table>
+        <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><span class="col-name">id</span><span class="tag-pk">PK</span></td><td><span class="col-type">BIGSERIAL</span></td><td><span class="default">autoincrement</span></td></tr>
+          <tr><td><span class="col-name">user_id</span><span class="tag-uq">UQ</span></td><td><span class="col-type">VARCHAR(100)</span></td><td><span class="req">Required</span> <span class="note">External ID</span></td></tr>
+          <tr><td><span class="col-name">first_name</span></td><td><span class="col-type">VARCHAR(255)</span></td><td><span class="req">Required</span></td></tr>
+          <tr><td><span class="col-name">last_name</span></td><td><span class="col-type">VARCHAR(255)</span></td><td><span class="req">Required</span></td></tr>
+          <tr><td><span class="col-name">email</span></td><td><span class="col-type">VARCHAR(255)</span></td><td><span class="req">Required</span></td></tr>
+          <tr><td><span class="col-name">phone</span></td><td><span class="col-type">VARCHAR(20)</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">gender</span></td><td><span class="col-type">VARCHAR(50)</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">date_of_birth</span></td><td><span class="col-type">DATE</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">height_inches</span></td><td><span class="col-type">DECIMAL(5,2)</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">weight_pounds</span></td><td><span class="col-type">DECIMAL(6,2)</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">ssn_masked</span></td><td><span class="col-type">VARCHAR(10)</span></td><td><span class="opt">Optional</span> <span class="note">Last 4 only</span></td></tr>
+          <tr><td><span class="col-name">address</span></td><td><span class="col-type">VARCHAR(500)</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">city</span></td><td><span class="col-type">VARCHAR(100)</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">state_province</span></td><td><span class="col-type">VARCHAR(100)</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">postal_code</span></td><td><span class="col-type">VARCHAR(20)</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">country</span></td><td><span class="col-type">VARCHAR(100)</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">created_at / updated_at</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="default">auto</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ AGENTS & GROUPS -->
+  <h2 id="agents"><span class="section-label">Agents &amp; Groups</span></h2>
+  <div class="grid">
+
+    <div class="card">
+      <div class="card-header">
+        <div><div class="table-name">agents</div><div class="model-name">model Agent</div></div>
+        <div class="tag">New</div>
+      </div>
+      <table>
+        <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><span class="col-name">id</span><span class="tag-pk">PK</span></td><td><span class="col-type">BIGSERIAL</span></td><td></td></tr>
+          <tr><td><span class="col-name">agent_id</span><span class="tag-uq">UQ</span></td><td><span class="col-type">VARCHAR(100)</span></td><td><span class="req">Required</span></td></tr>
+          <tr><td><span class="col-name">agent_name</span></td><td><span class="col-type">VARCHAR(255)</span></td><td><span class="req">Required</span></td></tr>
+          <tr><td><span class="col-name">rep_code</span><span class="tag-uq">UQ</span></td><td><span class="col-type">VARCHAR(100)</span></td><td><span class="req">Required</span></td></tr>
+          <tr><td><span class="col-name">agent_number</span></td><td><span class="col-type">VARCHAR(100)</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">email</span></td><td><span class="col-type">VARCHAR(255)</span></td><td><span class="req">Required</span></td></tr>
+          <tr><td><span class="col-name">phone</span></td><td><span class="col-type">VARCHAR(20)</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">group_id</span><span class="tag-fk">FK</span></td><td><span class="col-type">BIGINT</span></td><td><span class="note">→ groups.id (optional)</span></td></tr>
+          <tr><td><span class="col-name">is_active</span></td><td><span class="col-type">BOOLEAN</span></td><td><span class="default">true</span></td></tr>
+          <tr><td><span class="col-name">created_at / updated_at</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="default">auto</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div><div class="table-name">groups</div><div class="model-name">model Group — Phase II</div></div>
+        <div class="tag">New</div>
+      </div>
+      <table>
+        <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><span class="col-name">id</span><span class="tag-pk">PK</span></td><td><span class="col-type">BIGSERIAL</span></td><td></td></tr>
+          <tr><td><span class="col-name">group_id</span><span class="tag-uq">UQ</span></td><td><span class="col-type">VARCHAR(100)</span></td><td><span class="req">Required</span></td></tr>
+          <tr><td><span class="col-name">group_name</span></td><td><span class="col-type">VARCHAR(255)</span></td><td><span class="req">Required</span></td></tr>
+          <tr><td><span class="col-name">group_type</span></td><td><span class="col-type">VARCHAR(100)</span></td><td><span class="opt">Optional</span> <span class="note">employer, association</span></td></tr>
+          <tr><td><span class="col-name">contact_email</span></td><td><span class="col-type">VARCHAR(255)</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">contact_phone</span></td><td><span class="col-type">VARCHAR(20)</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">address / city / state_province / postal_code / country</span></td><td><span class="col-type">VARCHAR</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">created_at / updated_at</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="default">auto</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ PLANS -->
+  <h2 id="plans"><span class="section-label yellow">Plans</span> L713 Insurance Plans</h2>
+  <div class="grid">
+    <div class="card">
+      <div class="card-header">
+        <div><div class="table-name">plans</div><div class="model-name">model Plan</div></div>
+        <div class="tag">New</div>
+      </div>
+      <table>
+        <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><span class="col-name">id</span><span class="tag-pk">PK</span></td><td><span class="col-type">BIGSERIAL</span></td><td></td></tr>
+          <tr><td><span class="col-name">plan_id</span><span class="tag-uq">UQ</span></td><td><span class="col-type">VARCHAR(100)</span></td><td><span class="req">Required</span></td></tr>
+          <tr><td><span class="col-name">pid</span><span class="tag-uq">UQ</span></td><td><span class="col-type">VARCHAR(100)</span></td><td><span class="req">Required</span></td></tr>
+          <tr><td><span class="col-name">plan_name</span></td><td><span class="col-type">VARCHAR(255)</span></td><td><span class="req">Required</span></td></tr>
+          <tr><td><span class="col-name">plan_description</span></td><td><span class="col-type">TEXT</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">premium_amount</span></td><td><span class="col-type">DECIMAL(10,2)</span></td><td><span class="req">Required</span></td></tr>
+          <tr><td><span class="col-name">tier</span></td><td><span class="col-type">VARCHAR(50)</span></td><td><span class="opt">Optional</span> <span class="note">Bronze, Silver, Gold</span></td></tr>
+          <tr><td><span class="col-name">coverage_type</span></td><td><span class="col-type">VARCHAR(100)</span></td><td><span class="opt">Optional</span> <span class="note">Individual, Family</span></td></tr>
+          <tr><td><span class="col-name">effective_date</span></td><td><span class="col-type">DATE</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">is_active</span></td><td><span class="col-type">BOOLEAN</span></td><td><span class="default">true</span></td></tr>
+          <tr><td><span class="col-name">created_at / updated_at</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="default">auto</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ L713 ENROLLMENT -->
+  <h2 id="enrollment"><span class="section-label green">L713 Enrollment</span> Core Enrollment Module</h2>
+  <div class="grid wide">
+
+    <div class="card">
+      <div class="card-header">
+        <div><div class="table-name">l713_enrollments</div><div class="model-name">model L713Enrollment — Core Record</div></div>
+        <div class="tag">New</div>
+      </div>
+      <table>
+        <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><span class="col-name">id</span><span class="tag-pk">PK</span></td><td><span class="col-type">BIGSERIAL</span></td><td></td></tr>
+          <tr><td><span class="col-name">enrollment_id</span><span class="tag-uq">UQ</span></td><td><span class="col-type">VARCHAR(100)</span></td><td><span class="req">Required</span></td></tr>
+          <tr><td><span class="col-name">enrollment_type</span></td><td><span class="col-type">enrollment_type</span></td><td><span class="req">Required</span> <span class="note">individual | group</span></td></tr>
+          <tr><td><span class="col-name">user_id (memberId)</span><span class="tag-fk">FK</span></td><td><span class="col-type">BIGINT</span></td><td><span class="note">→ members.id · RESTRICT</span></td></tr>
+          <tr><td><span class="col-name">group_id</span><span class="tag-fk">FK</span></td><td><span class="col-type">BIGINT</span></td><td><span class="opt">Optional</span> <span class="note">→ groups.id · SET NULL</span></td></tr>
+          <tr><td><span class="col-name">agent_id</span><span class="tag-fk">FK</span></td><td><span class="col-type">BIGINT</span></td><td><span class="note">→ agents.id · RESTRICT</span></td></tr>
+          <tr><td><span class="col-name">status</span></td><td><span class="col-type">enrollment_status</span></td><td><span class="default">pending_underwriting</span></td></tr>
+          <tr><td><span class="col-name">plan_id</span><span class="tag-fk">FK</span></td><td><span class="col-type">BIGINT</span></td><td><span class="note">→ plans.id · RESTRICT</span></td></tr>
+          <tr><td><span class="col-name">enrollment_date</span></td><td><span class="col-type">DATE</span></td><td><span class="req">Required</span></td></tr>
+          <tr><td><span class="col-name">effective_date</span></td><td><span class="col-type">DATE</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">approved_at</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">approved_by</span><span class="tag-fk">FK</span></td><td><span class="col-type">INT</span></td><td><span class="opt">Optional</span> <span class="note">→ users.user_id (admin)</span></td></tr>
+          <tr><td><span class="col-name">signature_received_at</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">signed_by_user_id</span><span class="tag-fk">FK</span></td><td><span class="col-type">BIGINT</span></td><td><span class="opt">Optional</span> <span class="note">→ members.id</span></td></tr>
+          <tr><td><span class="col-name">activated_at</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">activated_by</span><span class="tag-fk">FK</span></td><td><span class="col-type">INT</span></td><td><span class="opt">Optional</span> <span class="note">→ users.user_id (admin)</span></td></tr>
+          <tr><td><span class="col-name">termination_date</span></td><td><span class="col-type">DATE</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">browser_metadata_id</span><span class="tag-fk">FK</span></td><td><span class="col-type">BIGINT</span></td><td><span class="opt">Optional</span> <span class="note">→ browser_metadata.id</span></td></tr>
+          <tr><td><span class="col-name">created_at / updated_at</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="default">auto</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ SUPPORTING -->
+  <h2 id="supporting"><span class="section-label">Supporting</span> Audit, Email &amp; More</h2>
+  <div class="grid">
+
+    <div class="card">
+      <div class="card-header">
+        <div><div class="table-name">enrollment_status_history</div><div class="model-name">model EnrollmentStatusHistory</div></div>
+        <div class="tag">New</div>
+      </div>
+      <table>
+        <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><span class="col-name">id</span><span class="tag-pk">PK</span></td><td><span class="col-type">BIGSERIAL</span></td><td></td></tr>
+          <tr><td><span class="col-name">enrollment_id</span><span class="tag-fk">FK</span></td><td><span class="col-type">BIGINT</span></td><td><span class="note">→ l713_enrollments · CASCADE</span></td></tr>
+          <tr><td><span class="col-name">previous_status</span></td><td><span class="col-type">enrollment_status</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">current_status</span></td><td><span class="col-type">enrollment_status</span></td><td><span class="req">Required</span></td></tr>
+          <tr><td><span class="col-name">changed_by</span><span class="tag-fk">FK</span></td><td><span class="col-type">INT</span></td><td><span class="note">→ users.user_id (admin)</span></td></tr>
+          <tr><td><span class="col-name">change_reason</span></td><td><span class="col-type">TEXT</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">changed_at</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="default">now()</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div><div class="table-name">enrollment_notes</div><div class="model-name">model EnrollmentNote</div></div>
+        <div class="tag">New</div>
+      </div>
+      <table>
+        <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><span class="col-name">id</span><span class="tag-pk">PK</span></td><td><span class="col-type">BIGSERIAL</span></td><td></td></tr>
+          <tr><td><span class="col-name">enrollment_id</span><span class="tag-fk">FK</span></td><td><span class="col-type">BIGINT</span></td><td><span class="note">→ l713_enrollments · CASCADE</span></td></tr>
+          <tr><td><span class="col-name">note_text</span></td><td><span class="col-type">TEXT</span></td><td><span class="req">Required</span></td></tr>
+          <tr><td><span class="col-name">added_by</span><span class="tag-fk">FK</span></td><td><span class="col-type">INT</span></td><td><span class="note">→ users.user_id (admin)</span></td></tr>
+          <tr><td><span class="col-name">added_at</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="default">now()</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div><div class="table-name">plan_selections</div><div class="model-name">model PlanSelection</div></div>
+        <div class="tag">New</div>
+      </div>
+      <table>
+        <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><span class="col-name">id</span><span class="tag-pk">PK</span></td><td><span class="col-type">BIGSERIAL</span></td><td></td></tr>
+          <tr><td><span class="col-name">enrollment_id</span><span class="tag-fk">FK</span></td><td><span class="col-type">BIGINT</span></td><td><span class="note">→ l713_enrollments · CASCADE</span></td></tr>
+          <tr><td><span class="col-name">plan_id</span><span class="tag-fk">FK</span></td><td><span class="col-type">BIGINT</span></td><td><span class="note">→ plans.id · RESTRICT</span></td></tr>
+          <tr><td><span class="col-name">selection_date</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="default">now()</span></td></tr>
+          <tr><td><span class="col-name">selected_by</span><span class="tag-fk">FK</span></td><td><span class="col-type">INT</span></td><td><span class="note">→ users.user_id (admin)</span></td></tr>
+          <tr><td><span class="col-name">is_approved</span></td><td><span class="col-type">BOOLEAN</span></td><td><span class="default">false</span></td></tr>
+          <tr><td><span class="col-name">approved_at</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">is_current</span></td><td><span class="col-type">BOOLEAN</span></td><td><span class="default">true</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div><div class="table-name">email_logs</div><div class="model-name">model EmailLog</div></div>
+        <div class="tag">New</div>
+      </div>
+      <table>
+        <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><span class="col-name">id</span><span class="tag-pk">PK</span></td><td><span class="col-type">BIGSERIAL</span></td><td></td></tr>
+          <tr><td><span class="col-name">enrollment_id</span><span class="tag-fk">FK</span></td><td><span class="col-type">BIGINT</span></td><td><span class="note">→ l713_enrollments · CASCADE</span></td></tr>
+          <tr><td><span class="col-name">email_type</span></td><td><span class="col-type">VARCHAR(100)</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">recipient_email</span></td><td><span class="col-type">VARCHAR(255)</span></td><td><span class="req">Required</span></td></tr>
+          <tr><td><span class="col-name">recipient_type</span></td><td><span class="col-type">VARCHAR(50)</span></td><td><span class="note">member, agent, group</span></td></tr>
+          <tr><td><span class="col-name">cc_email / bcc_email</span></td><td><span class="col-type">VARCHAR(500)</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">subject_line</span></td><td><span class="col-type">VARCHAR(500)</span></td><td><span class="req">Required</span></td></tr>
+          <tr><td><span class="col-name">email_body</span></td><td><span class="col-type">TEXT</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">email_status</span></td><td><span class="col-type">email_status</span></td><td><span class="default">pending</span></td></tr>
+          <tr><td><span class="col-name">failure_reason</span></td><td><span class="col-type">TEXT</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">sent_at / delivered_at / bounced_at</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">created_at / updated_at</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="default">auto</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div><div class="table-name">automated_reminders</div><div class="model-name">model AutomatedReminder</div></div>
+        <div class="tag">New</div>
+      </div>
+      <table>
+        <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><span class="col-name">id</span><span class="tag-pk">PK</span></td><td><span class="col-type">BIGSERIAL</span></td><td></td></tr>
+          <tr><td><span class="col-name">enrollment_id</span><span class="tag-fk">FK</span></td><td><span class="col-type">BIGINT</span></td><td><span class="note">→ l713_enrollments · CASCADE</span></td></tr>
+          <tr><td><span class="col-name">reminder_type</span></td><td><span class="col-type">VARCHAR(100)</span></td><td><span class="note">unanswered_questions, unsigned_plan</span></td></tr>
+          <tr><td><span class="col-name">email_log_id</span><span class="tag-fk">FK</span></td><td><span class="col-type">BIGINT</span></td><td><span class="note">→ email_logs · SET NULL</span></td></tr>
+          <tr><td><span class="col-name">scheduled_at</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="req">Required</span></td></tr>
+          <tr><td><span class="col-name">sent_at</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">is_sent</span></td><td><span class="col-type">BOOLEAN</span></td><td><span class="default">false</span></td></tr>
+          <tr><td><span class="col-name">created_at</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="default">now()</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div><div class="table-name">signatures</div><div class="model-name">model Signature</div></div>
+        <div class="tag">New</div>
+      </div>
+      <table>
+        <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><span class="col-name">id</span><span class="tag-pk">PK</span></td><td><span class="col-type">BIGSERIAL</span></td><td></td></tr>
+          <tr><td><span class="col-name">enrollment_id</span><span class="tag-fk">FK</span></td><td><span class="col-type">BIGINT</span></td><td><span class="note">→ l713_enrollments · CASCADE</span></td></tr>
+          <tr><td><span class="col-name">signed_by_user_id</span><span class="tag-fk">FK</span></td><td><span class="col-type">BIGINT</span></td><td><span class="note">→ members.id · RESTRICT</span></td></tr>
+          <tr><td><span class="col-name">signature_date</span></td><td><span class="col-type">DATE</span></td><td><span class="req">Required</span></td></tr>
+          <tr><td><span class="col-name">signature_timestamp</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="default">now()</span></td></tr>
+          <tr><td><span class="col-name">signature_token</span><span class="tag-uq">UQ</span></td><td><span class="col-type">VARCHAR(500)</span></td><td><span class="opt">Optional</span> <span class="note">Secure link token</span></td></tr>
+          <tr><td><span class="col-name">is_accepted</span></td><td><span class="col-type">BOOLEAN</span></td><td><span class="default">false</span></td></tr>
+          <tr><td><span class="col-name">was_declined</span></td><td><span class="col-type">BOOLEAN</span></td><td><span class="default">false</span></td></tr>
+          <tr><td><span class="col-name">declined_reason</span></td><td><span class="col-type">TEXT</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">ip_address</span></td><td><span class="col-type">VARCHAR(45)</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">browser_info</span></td><td><span class="col-type">VARCHAR(500)</span></td><td><span class="opt">Optional</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div><div class="table-name">browser_metadata</div><div class="model-name">model BrowserMetadata</div></div>
+        <div class="tag">New</div>
+      </div>
+      <table>
+        <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><span class="col-name">id</span><span class="tag-pk">PK</span></td><td><span class="col-type">BIGSERIAL</span></td><td></td></tr>
+          <tr><td><span class="col-name">user_agent</span></td><td><span class="col-type">TEXT</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">ip_address</span></td><td><span class="col-type">VARCHAR(45)</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">platform</span></td><td><span class="col-type">VARCHAR(100)</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">language</span></td><td><span class="col-type">VARCHAR(50)</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr><td><span class="col-name">created_at</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="default">now()</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div><div class="table-name">data_access_log</div><div class="model-name">model DataAccessLog</div></div>
+        <div class="tag">New</div>
+      </div>
+      <table>
+        <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><span class="col-name">id</span><span class="tag-pk">PK</span></td><td><span class="col-type">BIGSERIAL</span></td><td></td></tr>
+          <tr><td><span class="col-name">user_id (memberId)</span><span class="tag-fk">FK</span></td><td><span class="col-type">BIGINT</span></td><td><span class="note">→ members.id · subject of access</span></td></tr>
+          <tr><td><span class="col-name">accessed_by</span><span class="tag-fk">FK</span></td><td><span class="col-type">INT</span></td><td><span class="note">→ users.user_id (admin)</span></td></tr>
+          <tr><td><span class="col-name">data_type</span></td><td><span class="col-type">VARCHAR(100)</span></td><td><span class="note">health_questionnaire, ssn, full_profile</span></td></tr>
+          <tr><td><span class="col-name">accessed_at</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="default">now()</span></td></tr>
+          <tr><td><span class="col-name">access_reason</span></td><td><span class="col-type">VARCHAR(255)</span></td><td><span class="opt">Optional</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ JOBS -->
+  <h2 id="jobs"><span class="section-label">Jobs</span> Scheduler &amp; Background Tasks</h2>
+  <div class="grid">
+
+    <div class="card">
+      <div class="card-header">
+        <div><div class="table-name">jobs</div><div class="model-name">model Job — Core job queue</div></div>
+        <div class="tag">New</div>
+      </div>
+      <table>
+        <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr class="tooltip-row" data-col="id" data-type="BIGSERIAL" data-desc="Primary key, auto-incremented big integer."><td><span class="col-name">id</span><span class="tag-pk">PK</span></td><td><span class="col-type">BIGSERIAL</span></td><td></td></tr>
+          <tr class="tooltip-row" data-col="job_type" data-type="VARCHAR(100)" data-desc="Discriminator for what the job does. Examples: send_email, generate_pdf, send_reminder. Used by workers to route execution."><td><span class="col-name">job_type</span></td><td><span class="col-type">VARCHAR(100)</span></td><td><span class="req">Required</span> <span class="note">send_email, generate_pdf, send_reminder…</span></td></tr>
+          <tr class="tooltip-row" data-col="status" data-type="job_status" data-desc="Current lifecycle state of the job." data-default="pending"><td><span class="col-name">status</span></td><td><span class="col-type">job_status</span></td><td><span class="default">pending</span></td></tr>
+          <tr class="tooltip-row" data-col="payload" data-type="JSONB" data-desc="Input data passed to the job worker. Structure depends on job_type — e.g. { recipient, templateId, enrollmentId } for emails."><td><span class="col-name">payload</span></td><td><span class="col-type">JSONB</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr class="tooltip-row" data-col="priority" data-type="INT" data-desc="Lower number = higher priority. Workers pick up lower-valued jobs first." data-default="5"><td><span class="col-name">priority</span></td><td><span class="col-type">INT</span></td><td><span class="default">5</span></td></tr>
+          <tr class="tooltip-row" data-col="scheduled_at" data-type="TIMESTAMP" data-desc="When the job should be picked up. NULL means run immediately. Used for deferred/scheduled jobs."><td><span class="col-name">scheduled_at</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr class="tooltip-row" data-col="started_at" data-type="TIMESTAMP" data-desc="Timestamp when a worker began processing this job."><td><span class="col-name">started_at</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr class="tooltip-row" data-col="completed_at" data-type="TIMESTAMP" data-desc="Timestamp when the job finished successfully."><td><span class="col-name">completed_at</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr class="tooltip-row" data-col="failed_at" data-type="TIMESTAMP" data-desc="Timestamp when the job permanently failed (after exhausting max_retries)."><td><span class="col-name">failed_at</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr class="tooltip-row" data-col="retry_count" data-type="INT" data-desc="Number of attempts made so far. Incremented each time the job is retried." data-default="0"><td><span class="col-name">retry_count</span></td><td><span class="col-type">INT</span></td><td><span class="default">0</span></td></tr>
+          <tr class="tooltip-row" data-col="max_retries" data-type="INT" data-desc="Maximum number of retry attempts before the job is permanently marked failed." data-default="3"><td><span class="col-name">max_retries</span></td><td><span class="col-type">INT</span></td><td><span class="default">3</span></td></tr>
+          <tr class="tooltip-row" data-col="last_error" data-type="TEXT" data-desc="Error message or stack trace from the most recent failed attempt."><td><span class="col-name">last_error</span></td><td><span class="col-type">TEXT</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr class="tooltip-row" data-col="related_entity_type" data-type="VARCHAR(100)" data-desc="Soft reference — the entity type this job is associated with. e.g. enrollment, member."><td><span class="col-name">related_entity_type</span></td><td><span class="col-type">VARCHAR(100)</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr class="tooltip-row" data-col="related_entity_id" data-type="BIGINT" data-desc="Soft reference — the ID of the related entity. Not a hard FK to allow flexibility across tables."><td><span class="col-name">related_entity_id</span></td><td><span class="col-type">BIGINT</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr class="tooltip-row" data-col="created_by" data-type="INT" data-desc="Admin user who triggered this job manually. NULL for system-generated jobs." data-fk="→ users.user_id · SET NULL"><td><span class="col-name">created_by</span><span class="tag-fk">FK</span></td><td><span class="col-type">INT</span></td><td><span class="opt">Optional</span> <span class="note">→ users.user_id</span></td></tr>
+          <tr class="tooltip-row" data-col="created_at / updated_at" data-type="TIMESTAMP" data-desc="created_at: when the job was enqueued. updated_at: auto-updated on any change to the job record."><td><span class="col-name">created_at / updated_at</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="default">auto</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div><div class="table-name">job_logs</div><div class="model-name">model JobLog — Per-attempt execution log</div></div>
+        <div class="tag">New</div>
+      </div>
+      <table>
+        <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr class="tooltip-row" data-col="id" data-type="BIGSERIAL" data-desc="Primary key."><td><span class="col-name">id</span><span class="tag-pk">PK</span></td><td><span class="col-type">BIGSERIAL</span></td><td></td></tr>
+          <tr class="tooltip-row" data-col="job_id" data-type="BIGINT" data-desc="Reference to the parent job. All log entries for a job share the same job_id. Cascades on job deletion."><td><span class="col-name">job_id</span><span class="tag-fk">FK</span></td><td><span class="col-type">BIGINT</span></td><td><span class="note">→ jobs.id · CASCADE</span></td></tr>
+          <tr class="tooltip-row" data-col="attempt" data-type="INT" data-desc="The attempt number this log entry represents. Starts at 1 and increments with each retry."><td><span class="col-name">attempt</span></td><td><span class="col-type">INT</span></td><td><span class="req">Required</span></td></tr>
+          <tr class="tooltip-row" data-col="status" data-type="job_status" data-desc="Outcome of this specific attempt — independent of the overall job status."><td><span class="col-name">status</span></td><td><span class="col-type">job_status</span></td><td><span class="req">Required</span></td></tr>
+          <tr class="tooltip-row" data-col="started_at" data-type="TIMESTAMP" data-desc="When the worker began this attempt."><td><span class="col-name">started_at</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr class="tooltip-row" data-col="finished_at" data-type="TIMESTAMP" data-desc="When this attempt finished (success or failure)."><td><span class="col-name">finished_at</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr class="tooltip-row" data-col="error_detail" data-type="TEXT" data-desc="Full error message or stack trace from this specific attempt."><td><span class="col-name">error_detail</span></td><td><span class="col-type">TEXT</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr class="tooltip-row" data-col="output" data-type="JSONB" data-desc="Optional structured output from a successful attempt. e.g. { s3Key: '...', emailId: '...' }"><td><span class="col-name">output</span></td><td><span class="col-type">JSONB</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr class="tooltip-row" data-col="created_at" data-type="TIMESTAMP" data-desc="When this log entry was created." data-default="now()"><td><span class="col-name">created_at</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="default">now()</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div><div class="table-name">recurring_job_schedules</div><div class="model-name">model RecurringJobSchedule — Cron definitions</div></div>
+        <div class="tag">New</div>
+      </div>
+      <table>
+        <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr class="tooltip-row" data-col="id" data-type="BIGSERIAL" data-desc="Primary key."><td><span class="col-name">id</span><span class="tag-pk">PK</span></td><td><span class="col-type">BIGSERIAL</span></td><td></td></tr>
+          <tr class="tooltip-row" data-col="name" data-type="VARCHAR(255)" data-desc="Human-readable unique name for this schedule. e.g. 'Daily unanswered questions reminder'."><td><span class="col-name">name</span><span class="tag-uq">UQ</span></td><td><span class="col-type">VARCHAR(255)</span></td><td><span class="req">Required</span></td></tr>
+          <tr class="tooltip-row" data-col="job_type" data-type="VARCHAR(100)" data-desc="The type of job this schedule spawns each time it fires. Must match a recognized job_type in the workers."><td><span class="col-name">job_type</span></td><td><span class="col-type">VARCHAR(100)</span></td><td><span class="req">Required</span></td></tr>
+          <tr class="tooltip-row" data-col="cron_expression" data-type="VARCHAR(100)" data-desc="Standard cron expression defining the schedule frequency. e.g. '0 8 * * *' = every day at 8am."><td><span class="col-name">cron_expression</span></td><td><span class="col-type">VARCHAR(100)</span></td><td><span class="req">Required</span> <span class="note">e.g. 0 8 * * *</span></td></tr>
+          <tr class="tooltip-row" data-col="payload_template" data-type="JSONB" data-desc="Default JSON payload passed into each spawned job. Can include template variables resolved at runtime."><td><span class="col-name">payload_template</span></td><td><span class="col-type">JSONB</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr class="tooltip-row" data-col="is_active" data-type="BOOLEAN" data-desc="Enables or disables this schedule without deleting it." data-default="true"><td><span class="col-name">is_active</span></td><td><span class="col-type">BOOLEAN</span></td><td><span class="default">true</span></td></tr>
+          <tr class="tooltip-row" data-col="last_run_at" data-type="TIMESTAMP" data-desc="Timestamp of the most recent time this schedule fired and spawned a job."><td><span class="col-name">last_run_at</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr class="tooltip-row" data-col="next_run_at" data-type="TIMESTAMP" data-desc="Pre-computed next fire time. Indexed for efficient scheduler polling."><td><span class="col-name">next_run_at</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="opt">Optional</span></td></tr>
+          <tr class="tooltip-row" data-col="created_at / updated_at" data-type="TIMESTAMP" data-desc="Audit timestamps for when the schedule was created and last modified."><td><span class="col-name">created_at / updated_at</span></td><td><span class="col-type">TIMESTAMP</span></td><td><span class="default">auto</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ ENUMS -->
+  <h2 id="enums"><span class="section-label">Enums</span></h2>
+  <div class="enum-grid">
+
+    <div class="enum-card">
+      <div class="enum-card-header">underwriting_status</div>
+      <ul>
+        <li>pending</li>
+        <li>under_review</li>
+        <li>approved</li>
+        <li>rejected</li>
+        <li>activated</li>
+        <li>terminated</li>
+        <li>cancelled</li>
+      </ul>
+    </div>
+
+    <div class="enum-card">
+      <div class="enum-card-header">enrollment_status</div>
+      <ul>
+        <li>pending_underwriting</li>
+        <li>under_review</li>
+        <li>approved</li>
+        <li>rejected</li>
+        <li>signature_pending</li>
+        <li>active</li>
+        <li>terminated</li>
+        <li>cancelled</li>
+      </ul>
+    </div>
+
+    <div class="enum-card">
+      <div class="enum-card-header">enrollment_type</div>
+      <ul>
+        <li>individual</li>
+        <li>group</li>
+      </ul>
+    </div>
+
+    <div class="enum-card">
+      <div class="enum-card-header">question_status</div>
+      <ul>
+        <li>pending</li>
+        <li>answered</li>
+        <li>closed</li>
+      </ul>
+    </div>
+
+    <div class="enum-card">
+      <div class="enum-card-header">signature_status</div>
+      <ul>
+        <li>requested</li>
+        <li>signed</li>
+        <li>declined</li>
+        <li>expired</li>
+      </ul>
+    </div>
+
+    <div class="enum-card">
+      <div class="enum-card-header">email_status</div>
+      <ul>
+        <li>pending</li>
+        <li>queued</li>
+        <li>sent</li>
+        <li>failed</li>
+        <li>bounced</li>
+      </ul>
+    </div>
+
+    <div class="enum-card">
+      <div class="enum-card-header">job_status</div>
+      <ul>
+        <li>pending</li>
+        <li>running</li>
+        <li>completed</li>
+        <li>failed</li>
+        <li>retrying</li>
+        <li>cancelled</li>
+      </ul>
+    </div>
+
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ RELATIONSHIPS -->
+  <h2 id="relations"><span class="section-label">Relationships</span> Key Foreign Keys</h2>
+  <div class="erd-box">
+    <table class="rel-table">
+      <thead>
+        <tr>
+          <th>From Table</th>
+          <th>Column</th>
+          <th></th>
+          <th>To Table</th>
+          <th>Type</th>
+          <th>On Delete</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>user_roles</td><td>user_id</td><td class="arrow">→</td><td>users</td><td class="rel-type">N:1</td><td class="on-delete">CASCADE</td></tr>
+        <tr><td>user_roles</td><td>role_id</td><td class="arrow">→</td><td>roles</td><td class="rel-type">N:1</td><td class="on-delete">CASCADE</td></tr>
+        <tr><td>role_permissions</td><td>role_id</td><td class="arrow">→</td><td>roles</td><td class="rel-type">N:1</td><td class="on-delete">CASCADE</td></tr>
+        <tr><td>role_permissions</td><td>permission_id</td><td class="arrow">→</td><td>permissions</td><td class="rel-type">N:1</td><td class="on-delete">CASCADE</td></tr>
+        <tr><td>pending_underwriting_status</td><td>policy_id</td><td class="arrow">→</td><td>policies</td><td class="rel-type">N:1</td><td class="on-delete">RESTRICT</td></tr>
+        <tr><td>underwriting_questions</td><td>pending_underwriting_id</td><td class="arrow">→</td><td>pending_underwriting_status</td><td class="rel-type">N:1</td><td class="on-delete">CASCADE</td></tr>
+        <tr><td>underwriting_questions</td><td>email_log_id</td><td class="arrow">→</td><td>email_send_log</td><td class="rel-type">N:1</td><td class="on-delete">SET NULL</td></tr>
+        <tr><td>enrollment_signature</td><td>pending_underwriting_id</td><td class="arrow">→</td><td>pending_underwriting_status</td><td class="rel-type">N:1</td><td class="on-delete">CASCADE</td></tr>
+        <tr><td>enrollment_status_change_log</td><td>pending_underwriting_id</td><td class="arrow">→</td><td>pending_underwriting_status</td><td class="rel-type">N:1</td><td class="on-delete">CASCADE</td></tr>
+        <tr><td>agents</td><td>group_id</td><td class="arrow">→</td><td>groups</td><td class="rel-type">N:1</td><td class="on-delete">SET NULL</td></tr>
+        <tr><td>l713_enrollments</td><td>user_id</td><td class="arrow">→</td><td>members</td><td class="rel-type">N:1</td><td class="on-delete">RESTRICT</td></tr>
+        <tr><td>l713_enrollments</td><td>group_id</td><td class="arrow">→</td><td>groups</td><td class="rel-type">N:1</td><td class="on-delete">SET NULL</td></tr>
+        <tr><td>l713_enrollments</td><td>agent_id</td><td class="arrow">→</td><td>agents</td><td class="rel-type">N:1</td><td class="on-delete">RESTRICT</td></tr>
+        <tr><td>l713_enrollments</td><td>plan_id</td><td class="arrow">→</td><td>plans</td><td class="rel-type">N:1</td><td class="on-delete">RESTRICT</td></tr>
+        <tr><td>l713_enrollments</td><td>approved_by</td><td class="arrow">→</td><td>users (admin)</td><td class="rel-type">N:1</td><td class="on-delete">SET NULL</td></tr>
+        <tr><td>l713_enrollments</td><td>activated_by</td><td class="arrow">→</td><td>users (admin)</td><td class="rel-type">N:1</td><td class="on-delete">SET NULL</td></tr>
+        <tr><td>l713_enrollments</td><td>signed_by_user_id</td><td class="arrow">→</td><td>members</td><td class="rel-type">N:1</td><td class="on-delete">SET NULL</td></tr>
+        <tr><td>l713_enrollments</td><td>browser_metadata_id</td><td class="arrow">→</td><td>browser_metadata</td><td class="rel-type">N:1</td><td class="on-delete">SET NULL</td></tr>
+        <tr><td>enrollment_status_history</td><td>enrollment_id</td><td class="arrow">→</td><td>l713_enrollments</td><td class="rel-type">N:1</td><td class="on-delete">CASCADE</td></tr>
+        <tr><td>enrollment_status_history</td><td>changed_by</td><td class="arrow">→</td><td>users (admin)</td><td class="rel-type">N:1</td><td class="on-delete">SET NULL</td></tr>
+        <tr><td>enrollment_notes</td><td>enrollment_id</td><td class="arrow">→</td><td>l713_enrollments</td><td class="rel-type">N:1</td><td class="on-delete">CASCADE</td></tr>
+        <tr><td>enrollment_notes</td><td>added_by</td><td class="arrow">→</td><td>users (admin)</td><td class="rel-type">N:1</td><td class="on-delete">RESTRICT</td></tr>
+        <tr><td>plan_selections</td><td>enrollment_id</td><td class="arrow">→</td><td>l713_enrollments</td><td class="rel-type">N:1</td><td class="on-delete">CASCADE</td></tr>
+        <tr><td>plan_selections</td><td>plan_id</td><td class="arrow">→</td><td>plans</td><td class="rel-type">N:1</td><td class="on-delete">RESTRICT</td></tr>
+        <tr><td>plan_selections</td><td>selected_by</td><td class="arrow">→</td><td>users (admin)</td><td class="rel-type">N:1</td><td class="on-delete">RESTRICT</td></tr>
+        <tr><td>email_logs</td><td>enrollment_id</td><td class="arrow">→</td><td>l713_enrollments</td><td class="rel-type">N:1</td><td class="on-delete">CASCADE</td></tr>
+        <tr><td>automated_reminders</td><td>enrollment_id</td><td class="arrow">→</td><td>l713_enrollments</td><td class="rel-type">N:1</td><td class="on-delete">CASCADE</td></tr>
+        <tr><td>automated_reminders</td><td>email_log_id</td><td class="arrow">→</td><td>email_logs</td><td class="rel-type">N:1</td><td class="on-delete">SET NULL</td></tr>
+        <tr><td>signatures</td><td>enrollment_id</td><td class="arrow">→</td><td>l713_enrollments</td><td class="rel-type">N:1</td><td class="on-delete">CASCADE</td></tr>
+        <tr><td>signatures</td><td>signed_by_user_id</td><td class="arrow">→</td><td>members</td><td class="rel-type">N:1</td><td class="on-delete">RESTRICT</td></tr>
+        <tr><td>data_access_log</td><td>user_id</td><td class="arrow">→</td><td>members (subject)</td><td class="rel-type">N:1</td><td class="on-delete">RESTRICT</td></tr>
+        <tr><td>data_access_log</td><td>accessed_by</td><td class="arrow">→</td><td>users (admin)</td><td class="rel-type">N:1</td><td class="on-delete">RESTRICT</td></tr>
+        <tr><td>jobs</td><td>created_by</td><td class="arrow">→</td><td>users (admin)</td><td class="rel-type">N:1</td><td class="on-delete">SET NULL</td></tr>
+        <tr><td>job_logs</td><td>job_id</td><td class="arrow">→</td><td>jobs</td><td class="rel-type">N:1</td><td class="on-delete">CASCADE</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</main>
+
+<footer>
+  Generated from <code>prisma/schema.prisma</code> &mdash; uw-backend &mdash; June 1, 2026 &mdash; Hover any row for column details
+</footer>
+
+<div class="tooltip-popup" id="tooltip"></div>
+
+<script>
+  const tip = document.getElementById('tooltip');
+
+  document.querySelectorAll('.tooltip-row').forEach(row => {
+    row.addEventListener('mouseenter', (e) => {
+      const col = row.dataset.col || '';
+      const type = row.dataset.type || '';
+      const desc = row.dataset.desc || '';
+      const def = row.dataset.default || '';
+      const fk = row.dataset.fk || '';
+
+      let html = `<div class="tp-col">${col}</div><div class="tp-type">${type}</div>`;
+      if (desc) html += `<div class="tp-desc">${desc}</div>`;
+      if (fk) html += `<div class="tp-default">FK: ${fk}</div>`;
+      if (def) html += `<div class="tp-default">Default: ${def}</div>`;
+
+      tip.innerHTML = html;
+      tip.classList.add('visible');
+      positionTip(e);
+    });
+
+    row.addEventListener('mousemove', positionTip);
+
+    row.addEventListener('mouseleave', () => {
+      tip.classList.remove('visible');
+    });
+  });
+
+  function positionTip(e) {
+    const pad = 16;
+    const tw = tip.offsetWidth;
+    const th = tip.offsetHeight;
+    let x = e.clientX + pad;
+    let y = e.clientY + pad;
+    if (x + tw > window.innerWidth - pad) x = e.clientX - tw - pad;
+    if (y + th > window.innerHeight - pad) y = e.clientY - th - pad;
+    tip.style.left = x + 'px';
+    tip.style.top = y + 'px';
+  }
+</script>
+
+</body>
+</html>

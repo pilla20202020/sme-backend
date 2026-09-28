@@ -1,0 +1,729 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── RBAC ────────────────────────────────────────────────────────────────────
+
+model Role {
+  roleId      Int              @id @default(autoincrement()) @map("role_id")
+  roleName    String           @unique @map("role_name") @db.VarChar(100)
+  description String?          @db.Text
+  userRoles   UserRole[]
+  permissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  permissionId Int              @id @default(autoincrement()) @map("permission_id")
+  resource     String           @db.VarChar(150)
+  action       String           @db.VarChar(100)
+  name         String           @unique @db.VarChar(200)
+  roles        RolePermission[]
+
+  @@map("permissions")
+}
+
+model User {
+  userId         Int        @id @default(autoincrement()) @map("user_id")
+  /// Set only for platform-admin/support accounts that authenticate via the
+  /// internal SSO (see AuthService). Tenant-invited staff (STORY-003) have no
+  /// SSO account yet — pending the identity-provider decision (PRD OQ-06) —
+  /// so this is nullable and email is their real unique lookup key instead.
+  ssoUserId      BigInt?    @unique @map("sso_user_id")
+  /// The tenant this user was invited into. Null for platform-admin/support
+  /// accounts, which are not scoped to any single tenant.
+  tenantId       Int?       @map("tenant_id")
+  /// Only for tenant-invited staff (STORY-005) — platform-admin/support
+  /// accounts authenticate via SSO and never set this.
+  passwordHash   String?    @map("password_hash") @db.Text
+  email          String     @unique @db.VarChar(255)
+  firstName      String     @map("first_name") @db.VarChar(100)
+  lastName       String     @map("last_name") @db.VarChar(100)
+  phone          String?    @db.VarChar(50)
+  isActive       Boolean    @default(true) @map("is_active")
+  lastLoggedInAt DateTime?  @map("last_logged_in_at")
+  ipAddress      String?    @map("ip_address") @db.VarChar(45)
+  token          String?    @db.Text
+  createdAt      DateTime   @default(now()) @map("created_at")
+  updatedAt      DateTime   @updatedAt @map("updated_at")
+  roles          UserRole[]
+  jobsCreated    Job[]
+
+  tenant           Tenant?               @relation(fields: [tenantId], references: [tenantId], onDelete: Cascade)
+  priceChangesMade ProductPriceHistory[]
+  purchaseOrdersCreated PurchaseOrder[]
+  stockReceiptsReceived StockReceipt[]
+  auditLogsAsActor AuditLog[]
+  inventoryMovements InventoryMovement[]
+  sales            Sale[]
+  returnsOverridden Return[] @relation("ReturnOverrideApprover")
+  returnsProcessed  Return[] @relation("ReturnProcessedBy")
+  expensesRecorded  Expense[]
+
+  @@index([isActive])
+  @@index([tenantId])
+  @@map("users")
+}
+
+model UserRole {
+  userId     Int      @map("user_id")
+  roleId     Int      @map("role_id")
+  assignedAt DateTime @default(now()) @map("assigned_at")
+  user       User     @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  role       Role     @relation(fields: [roleId], references: [roleId], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@index([userId])
+  @@index([roleId])
+  @@map("user_roles")
+}
+
+model RolePermission {
+  roleId       Int        @map("role_id")
+  permissionId Int        @map("permission_id")
+  role         Role       @relation(fields: [roleId], references: [roleId], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [permissionId], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([roleId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
+// ─── JOB QUEUE ────────────────────────────────────────────────────────────────
+
+enum JobStatus {
+  pending
+  running
+  completed
+  failed
+  retrying
+  cancelled
+
+  @@map("job_status")
+}
+
+model Job {
+  id                BigInt    @id @default(autoincrement())
+  jobType           String    @map("job_type") @db.VarChar(100)
+  status            JobStatus @default(pending)
+  payload           Json?
+  priority          Int       @default(5)
+  scheduledAt       DateTime? @map("scheduled_at")
+  startedAt         DateTime? @map("started_at")
+  completedAt       DateTime? @map("completed_at")
+  failedAt          DateTime? @map("failed_at")
+  retryCount        Int       @default(0) @map("retry_count")
+  maxRetries        Int       @default(3) @map("max_retries")
+  lastError         String?   @map("last_error") @db.Text
+  relatedEntityType String?   @map("related_entity_type") @db.VarChar(100)
+  relatedEntityId   BigInt?   @map("related_entity_id")
+  createdBy         Int?      @map("created_by")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  createdByUser User?    @relation(fields: [createdBy], references: [userId], onDelete: SetNull)
+  logs          JobLog[]
+
+  @@index([status])
+  @@index([jobType])
+  @@index([scheduledAt])
+  @@index([createdBy])
+  @@map("jobs")
+}
+
+model JobLog {
+  id          BigInt    @id @default(autoincrement())
+  jobId       BigInt    @map("job_id")
+  attempt     Int
+  status      JobStatus
+  startedAt   DateTime? @map("started_at")
+  finishedAt  DateTime? @map("finished_at")
+  errorDetail String?   @map("error_detail") @db.Text
+  output      Json?
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+  @@map("job_logs")
+}
+
+model RecurringJobSchedule {
+  id              BigInt    @id @default(autoincrement())
+  name            String    @unique @db.VarChar(255)
+  jobType         String    @map("job_type") @db.VarChar(100)
+  cronExpression  String    @map("cron_expression") @db.VarChar(100)
+  payloadTemplate Json?     @map("payload_template")
+  isActive        Boolean   @default(true) @map("is_active")
+  lastRunAt       DateTime? @map("last_run_at")
+  nextRunAt       DateTime? @map("next_run_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@index([isActive])
+  @@index([nextRunAt])
+  @@map("recurring_job_schedules")
+}
+
+// ─── TENANTS (AI SME) ──────────────────────────────────────────────────────────
+// Root of multi-tenant data isolation (STORY-001 / EPIC-001). Every
+// tenant-owned model added in later stories carries a tenantId foreign key
+// back to this table, enforced by the tenant-scoping guard built in
+// STORY-004 (see aaid_artifacts/planning/backlog/backlog.md).
+
+enum Vertical {
+  pharmacy
+  hardware
+  generic
+
+  @@map("vertical")
+}
+
+model Tenant {
+  tenantId                   Int      @id @default(autoincrement()) @map("tenant_id")
+  name                       String   @db.VarChar(255)
+  vertical                   Vertical @default(pharmacy)
+  currency                   String   @default("NPR") @db.VarChar(3)
+  /// DB-level fallback only (true regardless of vertical) — the real,
+  /// vertical-driven value is always set explicitly by TenantsService.register().
+  /// A direct insert that bypasses the service (e.g. a script) would get this
+  /// fallback rather than a computed value.
+  batchExpiryTrackingEnabled Boolean  @default(true) @map("batch_expiry_tracking_enabled")
+  isActive                   Boolean  @default(true) @map("is_active")
+  createdAt                  DateTime @default(now()) @map("created_at")
+  updatedAt                  DateTime @updatedAt @map("updated_at")
+
+  branches       Branch[]
+  users          User[]
+  categories     Category[]
+  products       Product[]
+  productBatches ProductBatch[]
+  customers      Customer[]
+  suppliers      Supplier[]
+  purchaseOrders PurchaseOrder[]
+  stockReceipts  StockReceipt[]
+  auditLogs      AuditLog[]
+  inventoryMovements InventoryMovement[]
+  sales          Sale[]
+  returns        Return[]
+  expenses       Expense[]
+
+  @@index([isActive])
+  @@map("tenants")
+}
+
+// ─── BRANCHES (STORY-002 / E-001-02) ──────────────────────────────────────────
+// Every branch belongs to exactly one tenant. Nested under /tenants/:tenantId
+// in the API for explicit tenant scoping until the automatic tenant-scoping
+// guard (STORY-004) lands.
+
+model Branch {
+  branchId  Int      @id @default(autoincrement()) @map("branch_id")
+  tenantId  Int      @map("tenant_id")
+  name      String   @db.VarChar(255)
+  address   String?  @db.VarChar(500)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [tenantId], onDelete: Cascade)
+  expenses Expense[]
+
+  @@index([tenantId])
+  @@index([isActive])
+  @@map("branches")
+}
+
+// ─── PRODUCT CATALOG & BATCH/EXPIRY (STORY-006..009 / EPIC-002) ───────────────
+// All models here are tenant-scoped (tenantId stored directly on the row, not
+// derived through a join — matching Branch/User's existing pattern). See
+// aaid_artifacts/planning/prd/prd-catalog-customers-suppliers.md for the full
+// data-model rationale.
+
+model Category {
+  categoryId Int      @id @default(autoincrement()) @map("category_id")
+  tenantId   Int      @map("tenant_id")
+  name       String   @db.VarChar(150)
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [tenantId], onDelete: Cascade)
+  products Product[]
+
+  // Postgres unique constraints are case-sensitive — app layer must also
+  // compare case-insensitively before insert (see CategoriesService).
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("categories")
+}
+
+enum ProductUnit {
+  tablet
+  capsule
+  bottle
+  box
+  strip
+  vial
+  ml
+  each
+
+  @@map("product_unit")
+}
+
+model Product {
+  productId        Int         @id @default(autoincrement()) @map("product_id")
+  tenantId         Int         @map("tenant_id")
+  categoryId       Int?        @map("category_id")
+  name             String      @db.VarChar(255)
+  sku              String?     @db.VarChar(100)
+  unit             ProductUnit
+  currentPrice     Decimal     @map("current_price") @db.Decimal(10, 2)
+  reorderThreshold Int?        @map("reorder_threshold")
+  isActive         Boolean     @default(true) @map("is_active")
+  createdAt        DateTime    @default(now()) @map("created_at")
+  updatedAt        DateTime    @updatedAt @map("updated_at")
+
+  tenant       Tenant                @relation(fields: [tenantId], references: [tenantId], onDelete: Cascade)
+  category     Category?             @relation(fields: [categoryId], references: [categoryId], onDelete: SetNull)
+  priceHistory ProductPriceHistory[]
+  batches      ProductBatch[]
+  purchaseOrderLines PurchaseOrderLine[]
+  stockReceiptLines  StockReceiptLine[]
+  inventoryMovements InventoryMovement[]
+  saleLines          SaleLine[]
+  returnLines        ReturnLine[]
+
+  // NULLs are not compared as equal in Postgres, so multiple products with no
+  // sku can coexist per tenant — only a real duplicate sku within the same
+  // tenant collides. Do not "fix" this — it's the intended behavior (PRD).
+  @@unique([tenantId, sku])
+  @@index([tenantId])
+  @@index([categoryId])
+  @@map("products")
+}
+
+/// Append-only log. Never updated or deleted — a correction is a new row.
+model ProductPriceHistory {
+  id            BigInt   @id @default(autoincrement())
+  productId     Int      @map("product_id")
+  price         Decimal  @db.Decimal(10, 2)
+  effectiveFrom DateTime @default(now()) @map("effective_from")
+  changedBy     Int?     @map("changed_by")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  product       Product @relation(fields: [productId], references: [productId], onDelete: Cascade)
+  changedByUser User?   @relation(fields: [changedBy], references: [userId], onDelete: SetNull)
+
+  @@index([productId])
+  @@map("product_price_history")
+}
+
+model ProductBatch {
+  batchId           Int      @id @default(autoincrement()) @map("batch_id")
+  tenantId          Int      @map("tenant_id")
+  productId         Int      @map("product_id")
+  batchNumber       String   @map("batch_number") @db.VarChar(100)
+  expiryDate        DateTime @map("expiry_date") @db.Date
+  quantityReceived  Int      @map("quantity_received")
+  quantityRemaining Int      @map("quantity_remaining")
+  receivedAt        DateTime @default(now()) @map("received_at")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [tenantId], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [productId], onDelete: Cascade)
+  stockReceiptLines StockReceiptLine[]
+  inventoryMovements InventoryMovement[]
+  saleLineAllocations SaleLineBatchAllocation[]
+  returnLines         ReturnLine[]
+
+  @@index([tenantId])
+  @@index([productId])
+  @@index([expiryDate])
+  @@map("product_batches")
+}
+
+// ─── CUSTOMERS & SUPPLIERS (STORY-010/011 / EPIC-003) ─────────────────────────
+// Lightweight tenant-owned records. Deliberately no uniqueness constraint on
+// Customer's phone/email/name — duplicates are allowed for MVP (PRD).
+
+model Customer {
+  customerId Int      @id @default(autoincrement()) @map("customer_id")
+  tenantId   Int      @map("tenant_id")
+  name       String   @db.VarChar(255)
+  phone      String?  @db.VarChar(50)
+  email      String?  @db.VarChar(255)
+  address    String?  @db.VarChar(500)
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [tenantId], onDelete: Cascade)
+  sales  Sale[]
+
+  @@index([tenantId])
+  @@index([phone])
+  @@map("customers")
+}
+
+model Supplier {
+  supplierId    Int      @id @default(autoincrement()) @map("supplier_id")
+  tenantId      Int      @map("tenant_id")
+  name          String   @db.VarChar(255)
+  contactPerson String?  @map("contact_person") @db.VarChar(255)
+  phone         String?  @db.VarChar(50)
+  email         String?  @db.VarChar(255)
+  paymentTerms  String?  @map("payment_terms") @db.VarChar(255)
+  address       String?  @db.VarChar(500)
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [tenantId], onDelete: Cascade)
+  purchaseOrders PurchaseOrder[]
+
+  @@index([tenantId])
+  @@map("suppliers")
+}
+
+// ─── PURCHASING & RECEIVING (STORY-012..014 / EPIC-004) ───────────────────────
+// See aaid_artifacts/planning/prd/prd-purchasing-audit-log.md Part A for the
+// full data-model rationale. A PurchaseOrderLine freezes unitCost/productId
+// at creation time (a PO is a point-in-time record, same principle as
+// ProductPriceHistory); PurchaseOrder.status is always computed from
+// cumulative line quantityReceived totals, never caller-supplied.
+
+enum PurchaseOrderStatus {
+  pending
+  partially_received
+  received
+
+  @@map("purchase_order_status")
+}
+
+model PurchaseOrder {
+  purchaseOrderId      Int                 @id @default(autoincrement()) @map("purchase_order_id")
+  tenantId             Int                 @map("tenant_id")
+  supplierId           Int                 @map("supplier_id")
+  status               PurchaseOrderStatus @default(pending)
+  orderDate            DateTime            @default(now()) @map("order_date")
+  expectedDeliveryDate DateTime?           @map("expected_delivery_date") @db.Date
+  notes                String?             @db.Text
+  createdBy            Int?                @map("created_by")
+  createdAt            DateTime            @default(now()) @map("created_at")
+  updatedAt            DateTime            @updatedAt @map("updated_at")
+
+  tenant        Tenant              @relation(fields: [tenantId], references: [tenantId], onDelete: Cascade)
+  supplier      Supplier            @relation(fields: [supplierId], references: [supplierId], onDelete: Restrict)
+  createdByUser User?               @relation(fields: [createdBy], references: [userId], onDelete: SetNull)
+  lines         PurchaseOrderLine[]
+  receipts      StockReceipt[]
+
+  @@index([tenantId])
+  @@index([supplierId])
+  @@index([status])
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderLine {
+  lineId           Int      @id @default(autoincrement()) @map("line_id")
+  purchaseOrderId  Int      @map("purchase_order_id")
+  productId        Int      @map("product_id")
+  quantityOrdered  Int      @map("quantity_ordered")
+  quantityReceived Int      @default(0) @map("quantity_received")
+  unitCost         Decimal  @map("unit_cost") @db.Decimal(10, 2)
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  purchaseOrder PurchaseOrder      @relation(fields: [purchaseOrderId], references: [purchaseOrderId], onDelete: Cascade)
+  product       Product            @relation(fields: [productId], references: [productId], onDelete: Restrict)
+  receiptLines  StockReceiptLine[]
+
+  @@index([purchaseOrderId])
+  @@index([productId])
+  @@map("purchase_order_lines")
+}
+
+model StockReceipt {
+  receiptId       Int      @id @default(autoincrement()) @map("receipt_id")
+  tenantId        Int      @map("tenant_id")
+  purchaseOrderId Int      @map("purchase_order_id")
+  receivedAt      DateTime @default(now()) @map("received_at")
+  receivedBy      Int?     @map("received_by")
+  notes           String?  @db.Text
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  tenant         Tenant             @relation(fields: [tenantId], references: [tenantId], onDelete: Cascade)
+  purchaseOrder  PurchaseOrder      @relation(fields: [purchaseOrderId], references: [purchaseOrderId], onDelete: Cascade)
+  receivedByUser User?              @relation(fields: [receivedBy], references: [userId], onDelete: SetNull)
+  lines          StockReceiptLine[]
+
+  @@index([tenantId])
+  @@index([purchaseOrderId])
+  @@map("stock_receipts")
+}
+
+model StockReceiptLine {
+  receiptLineId       Int      @id @default(autoincrement()) @map("receipt_line_id")
+  receiptId           Int      @map("receipt_id")
+  purchaseOrderLineId Int      @map("purchase_order_line_id")
+  productId           Int      @map("product_id")
+  quantityReceived    Int      @map("quantity_received")
+  batchNumber         String   @map("batch_number") @db.VarChar(100)
+  expiryDate          DateTime @map("expiry_date") @db.Date
+  unitCost            Decimal  @map("unit_cost") @db.Decimal(10, 2)
+  productBatchId      Int?     @map("product_batch_id")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  receipt           StockReceipt      @relation(fields: [receiptId], references: [receiptId], onDelete: Cascade)
+  purchaseOrderLine PurchaseOrderLine @relation(fields: [purchaseOrderLineId], references: [lineId], onDelete: Restrict)
+  product           Product           @relation(fields: [productId], references: [productId], onDelete: Restrict)
+  productBatch      ProductBatch?     @relation(fields: [productBatchId], references: [batchId], onDelete: SetNull)
+
+  @@index([receiptId])
+  @@index([purchaseOrderLineId])
+  @@map("stock_receipt_lines")
+}
+
+// ─── INVENTORY MANAGEMENT (STORY-015..018 / EPIC-005) ─────────────────────────
+// See aaid_artifacts/planning/prd/prd-inventory-management.md. Every existing
+// mutation that changes ProductBatch.quantityRemaining (receiving, manual
+// adjustment) also inserts one InventoryMovement row in the same
+// transaction — this is the append-only ledger that answers "why is the
+// count what it is." referenceId is intentionally untyped/unconstrained (no
+// FK) because the source row varies by movementType (StockReceiptLine today,
+// a future Sale/Return line) — referenceType disambiguates instead of
+// forcing a nullable FK column per source type.
+
+enum InventoryMovementType {
+  receipt // stock received via a StockReceipt (Sprint 3) — logged, not caller-initiated
+  adjustment // manual correction (STORY-016)
+  sale // reserved for EPIC-006 — not writable by any endpoint in this sprint
+  return // reserved for EPIC-007 — not writable by any endpoint in this sprint
+
+  @@map("inventory_movement_type")
+}
+
+/// Append-only. Never updated or deleted — a correction is a new row with an
+/// opposite-signed quantityDelta, same convention as ProductPriceHistory.
+/// Exception: STORY-016's adjustment endpoint updates its own just-created
+/// row once, in the same transaction, to stamp referenceId with its own
+/// movementId (there is no separate adjustment table — the movement row IS
+/// the adjustment record) — this is not a later mutation of settled history.
+model InventoryMovement {
+  movementId     BigInt                @id @default(autoincrement()) @map("movement_id")
+  tenantId       Int                   @map("tenant_id")
+  productId      Int                   @map("product_id")
+  productBatchId Int?                  @map("product_batch_id")
+  movementType   InventoryMovementType @map("movement_type")
+  quantityDelta  Int                   @map("quantity_delta") // signed: +12 in, -3 out
+  reason         String?               @db.Text              // required by service layer when type=adjustment
+  referenceType  String?               @map("reference_type") @db.VarChar(50) // e.g. "StockReceipt", "InventoryAdjustment"
+  referenceId    Int?                  @map("reference_id")   // the source row's id, loosely typed (no FK — sources vary by type)
+  actorId        Int?                  @map("actor_id")
+  occurredAt     DateTime              @default(now()) @map("occurred_at")
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [tenantId], onDelete: Cascade)
+  product      Product       @relation(fields: [productId], references: [productId], onDelete: Restrict)
+  productBatch ProductBatch? @relation(fields: [productBatchId], references: [batchId], onDelete: SetNull)
+  actor        User?         @relation(fields: [actorId], references: [userId], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([productId])
+  @@index([productBatchId])
+  @@index([occurredAt])
+  @@map("inventory_movements")
+}
+
+// ─── AUDIT LOG (STORY-036/037 / EPIC-013) ─────────────────────────────────────
+// See aaid_artifacts/planning/prd/prd-purchasing-audit-log.md Part B. Rows are
+// append-only — never updated or deleted (no updatedAt) — and written
+// exclusively by the global AuditInterceptor, never by hand-written calls
+// scattered across services. actorLabel is denormalized plain text captured
+// at write time so the trail stays readable even if the actor's User row is
+// later deleted or renamed.
+model AuditLog {
+  id          BigInt   @id @default(autoincrement())
+  tenantId    Int      @map("tenant_id")
+  actorUserId Int?     @map("actor_user_id")
+  actorLabel  String   @map("actor_label") @db.VarChar(255)
+  action      String   @db.VarChar(150)
+  targetType  String   @map("target_type") @db.VarChar(100)
+  targetId    String?  @map("target_id") @db.VarChar(100)
+  metadata    Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  tenant    Tenant @relation(fields: [tenantId], references: [tenantId], onDelete: Cascade)
+  actorUser User?  @relation(fields: [actorUserId], references: [userId], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([actorUserId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ─── SALES / POS (STORY-019..022 / EPIC-006) ──────────────────────────────────
+// See aaid_artifacts/planning/prd/prd-sales-pos.md. Same "freeze at
+// transaction time" principle as PurchaseOrderLine.unitCost /
+// ProductPriceHistory: SaleLine.unitPrice is copied from Product.currentPrice
+// at checkout and never looked up dynamically again. Stock is drawn
+// First-Expiry-First-Out (FEFO) via the atomic-guarded-updateMany pattern
+// established in InventoryMovementsService.createAdjustment() (STORY-016) —
+// never a read-then-write — because the exact same lost-update race QA
+// caught there applies here at higher stakes (a live cashier queue). MVP:
+// total === subtotal, no tax/discount/payment-method fields (PRD §10).
+
+model Sale {
+  saleId     Int      @id @default(autoincrement()) @map("sale_id")
+  tenantId   Int      @map("tenant_id")
+  customerId Int?     @map("customer_id")
+  cashierId  Int?     @map("cashier_id")
+  subtotal   Decimal  @db.Decimal(10, 2)
+  total      Decimal  @db.Decimal(10, 2) // MVP: total === subtotal, no tax/discount (see PRD §8)
+  saleDate   DateTime @default(now()) @map("sale_date")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  tenant   Tenant     @relation(fields: [tenantId], references: [tenantId], onDelete: Cascade)
+  customer Customer?  @relation(fields: [customerId], references: [customerId], onDelete: SetNull)
+  cashier  User?      @relation(fields: [cashierId], references: [userId], onDelete: SetNull)
+  lines    SaleLine[]
+  returns  Return[]
+
+  @@index([tenantId])
+  @@index([customerId])
+  @@index([saleDate])
+  @@map("sales")
+}
+
+/// Freezes unitPrice at sale time — same principle as ProductPriceHistory /
+/// PurchaseOrderLine.unitCost. Never updated after creation (a correction is
+/// a return, EPIC-007, not an edit to this row).
+model SaleLine {
+  saleLineId Int      @id @default(autoincrement()) @map("sale_line_id")
+  saleId     Int      @map("sale_id")
+  productId  Int      @map("product_id")
+  quantity   Int
+  unitPrice  Decimal  @map("unit_price") @db.Decimal(10, 2)
+  lineTotal  Decimal  @map("line_total") @db.Decimal(10, 2)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  sale        Sale                      @relation(fields: [saleId], references: [saleId], onDelete: Cascade)
+  product     Product                   @relation(fields: [productId], references: [productId], onDelete: Restrict)
+  allocations SaleLineBatchAllocation[]
+
+  @@index([saleId])
+  @@index([productId])
+  @@map("sale_lines")
+}
+
+/// Records exactly which batch(es) a sale line drew from and how much —
+/// a line can span more than one batch when the soonest-expiring batch
+/// doesn't have enough quantity alone (FEFO spillover). One InventoryMovement
+/// row is written per allocation (STORY-021), mirroring how StockReceiptLine
+/// already maps 1:1 to a movement (Sprint 4's receiving retrofit).
+model SaleLineBatchAllocation {
+  id             Int @id @default(autoincrement())
+  saleLineId     Int @map("sale_line_id")
+  productBatchId Int @map("product_batch_id")
+  quantity       Int
+
+  saleLine     SaleLine     @relation(fields: [saleLineId], references: [saleLineId], onDelete: Cascade)
+  productBatch ProductBatch @relation(fields: [productBatchId], references: [batchId], onDelete: Restrict)
+  returnLines  ReturnLine[]
+
+  @@index([saleLineId])
+  @@index([productBatchId])
+  @@map("sale_line_batch_allocations")
+}
+
+// ─── RETURNS (STORY-023/024 / EPIC-007) ───────────────────────────────────────
+// See aaid_artifacts/planning/prd/prd-returns-expenses-cash.md. A return
+// reverses one SaleLineBatchAllocation row directly (matched case) or, for a
+// manager-override unmatched return (no original sale to match against),
+// credits a caller-specified batch directly. Sale/Return remain tenant-level
+// (no branchId) — only Expense below is branch-attributed this sprint (PRD §2).
+
+model Return {
+  returnId           Int      @id @default(autoincrement()) @map("return_id")
+  tenantId           Int      @map("tenant_id")
+  saleId             Int?     @map("sale_id") // null only for a manager-override unmatched return
+  reason             String   @db.Text
+  overrideApprovedBy Int?     @map("override_approved_by") // set only when saleId is null
+  processedBy        Int?     @map("processed_by")
+  refundTotal        Decimal  @map("refund_total") @db.Decimal(10, 2)
+  returnDate         DateTime @default(now()) @map("return_date")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  tenant           Tenant       @relation(fields: [tenantId], references: [tenantId], onDelete: Cascade)
+  sale             Sale?        @relation(fields: [saleId], references: [saleId], onDelete: Restrict)
+  overrideApprover User?        @relation("ReturnOverrideApprover", fields: [overrideApprovedBy], references: [userId], onDelete: SetNull)
+  processedByUser  User?        @relation("ReturnProcessedBy", fields: [processedBy], references: [userId], onDelete: SetNull)
+  lines            ReturnLine[]
+
+  @@index([tenantId])
+  @@index([saleId])
+  @@index([returnDate])
+  @@map("returns")
+}
+
+/// One row per SaleLineBatchAllocation being (fully or partially) reversed —
+/// deliberately mirrors that table 1:1 rather than splitting/re-deriving
+/// batch quantities. A return spanning two original allocations (because the
+/// underlying sale line's FEFO draw spanned two batches) is just two
+/// ReturnLine rows, each referencing its own allocation — symmetric with how
+/// the sale created them, no proportional-split logic needed.
+model ReturnLine {
+  returnLineId            Int      @id @default(autoincrement()) @map("return_line_id")
+  returnId                Int      @map("return_id")
+  productId               Int      @map("product_id")
+  saleLineBatchAllocationId Int?   @map("sale_line_batch_allocation_id") // null only for override
+  productBatchId          Int      @map("product_batch_id") // always set — derived from the allocation when matched, caller-supplied when override
+  quantity                Int
+  unitPrice               Decimal  @map("unit_price") @db.Decimal(10, 2)
+  lineTotal               Decimal  @map("line_total") @db.Decimal(10, 2)
+  createdAt               DateTime @default(now()) @map("created_at")
+
+  return                 Return                   @relation(fields: [returnId], references: [returnId], onDelete: Cascade)
+  product                Product                  @relation(fields: [productId], references: [productId], onDelete: Restrict)
+  saleLineBatchAllocation SaleLineBatchAllocation? @relation(fields: [saleLineBatchAllocationId], references: [id], onDelete: Restrict)
+  productBatch            ProductBatch             @relation(fields: [productBatchId], references: [batchId], onDelete: Restrict)
+
+  @@index([returnId])
+  @@index([saleLineBatchAllocationId])
+  @@index([productBatchId])
+  @@map("return_lines")
+}
+
+// ─── EXPENSES & CASH (STORY-025/026 / EPIC-008) ───────────────────────────────
+// Expense is the first model in this project to actually carry a branchId
+// (PRD §2) — Sale/Return remain tenant-level, so the daily cash view is
+// tenant-wide, not per-branch, for this sprint.
+
+model Expense {
+  expenseId   Int      @id @default(autoincrement()) @map("expense_id")
+  tenantId    Int      @map("tenant_id")
+  branchId    Int      @map("branch_id")
+  category    String   @db.VarChar(100) // free text, no fixed taxonomy for MVP — mirrors Customer/Supplier's light-touch field choices
+  amount      Decimal  @db.Decimal(10, 2)
+  description String?  @db.Text
+  expenseDate DateTime @db.Date @map("expense_date")
+  recordedBy  Int?     @map("recorded_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  tenant         Tenant @relation(fields: [tenantId], references: [tenantId], onDelete: Cascade)
+  branch         Branch @relation(fields: [branchId], references: [branchId], onDelete: Restrict)
+  recordedByUser User?  @relation(fields: [recordedBy], references: [userId], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([branchId])
+  @@index([expenseDate])
+  @@map("expenses")
+}

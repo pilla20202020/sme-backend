@@ -1,0 +1,79 @@
+# Configuration file for MegaLinter
+# See all available variables at https://megalinter.io/latest/config-file/
+
+---
+# all, none, or list of linter keys
+APPLY_FIXES: all
+
+# If we use ENABLE variable, all other languages/formats/tooling-formats will be disabled by default
+ENABLE:
+  - BASH
+  - JAVASCRIPT
+  - JSX
+  - TSX
+  - TYPESCRIPT
+  - CSS
+  - ACTION
+
+# If we use ENABLE_LINTERS variable, all other linters will be disabled by default
+ENABLE_LINTERS:
+  - JSON_JSONLINT
+  - JSON_PRETTIER
+  - YAML_YAMLLINT
+  - YAML_PRETTIER
+  - DOCKERFILE_HADOLINT
+  - HTML_HTMLHINT
+  - GROOVY_NPM_GROOVY_LINT
+  - REPOSITORY_GITLEAKS
+  # - REPOSITORY_CHECKOV
+  # - REPOSITORY_SEMGREP
+  # - REPOSITORY_TRIVY
+
+DISABLE_LINTERS:
+  - PHP_PHPSTAN
+  - PHP_PSALM
+
+DISABLE_ERRORS_LINTERS:
+  # - REPOSITORY_SEMGREP
+  # - REPOSITORY_TRIVY
+  - SPELL_VALE
+
+SECURED_ENV_VARIABLES:
+  - SONAR_PROJECT_KEY
+  - SONAR_TOKEN
+
+PRINT_ALL_FILES: false
+
+GROOVY_NPM_GROOVY_LINT_FILE_NAMES_REGEX:
+  - "^(Jenkinsfile|JenkinsFile|Jenkinsfile.*)$"
+
+MARKDOWN_FILTER_REGEX_EXCLUDE: '(license|\.md|docs/|licenses)'
+
+EXCLUDED_DIRECTORIES:
+  - bootstrap
+  - .venv
+  - vendor
+  - public
+  - logs
+  - node_modules
+
+SPELL_VALE_FILE_EXTENSIONS:
+  - .md
+
+# Uncomment if you want MegaLinter to detect errors but not block CI to pass
+# DISABLE_ERRORS: true
+
+FLAVOR_SUGGESTIONS: true
+GITHUB_STATUS_REPORTER: false
+
+# Show timing info
+SHOW_ELAPSED_TIME: true
+
+VALIDATE_ALL_CODEBASE: true
+
+REPOSITORY_GITLEAKS_CONFIG_FILE: .gitleaks.toml
+
+# scan only during PRs/commit, not on whole codebase
+REPOSITORY_GITLEAKS_PR_COMMITS_SCAN: false
+
+

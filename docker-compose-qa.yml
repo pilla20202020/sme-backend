@@ -1,0 +1,9 @@
+services:
+  prod-uw-api:
+    image: '${UW_API_IMAGE}'
+    container_name: prod-uw-api
+    ports:
+      - '8052:3000'
+    restart: unless-stopped
+    volumes:
+      - ./logs:/app/logs
